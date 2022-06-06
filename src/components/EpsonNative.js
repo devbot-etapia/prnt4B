@@ -8,9 +8,9 @@ export const TransferDataToSDK = async (payload) => {
   const result = await EpsonModule.rnReceiveData(payload);
 }
 
-export const StartDiscovery = () => {
+export const StartDiscovery = async () => {
   console.log("Running discover ...");
-  EpsonModule.rnDiscover();
+  return await EpsonModule.rnDiscover();
 }
 
 export const GetConstants = async () => {

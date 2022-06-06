@@ -12,12 +12,12 @@ const App = () => {
   const isDarkMode = useColorScheme() === 'dark';
   //useTimer(30, StartDiscovery, false);
   const [printers , setPrinters] = useState(null);
+  const [isDiscoverEnabled , setIsDiscoverEnabled] = useState(false);
   
-  useEffect(() => {
-    StartDiscovery()
+  useEffect(async () => {
+    await restartDiscovery()
     DeviceEventEmitter.addListener("printers", (printersListened) => {
       console.log(printersListened);
-      debugger
       setPrinters(printersListened)
     });
   }, []);
@@ -26,6 +26,15 @@ const App = () => {
     const data = await SubmitMACs();
     await TransferDataToSDK(JSON.stringify(data));
   };
+
+  const restartDiscovery = async () => {
+    setIsDiscoverEnabled(true);
+    await StartDiscovery().then(data => {
+      setTimeout(() => {
+        setIsDiscoverEnabled(false);
+      }, 3000);
+    });
+  }
 
   return (
     <View style={styles.container}>
@@ -38,6 +47,9 @@ const App = () => {
         </Section>
         <InputText />
         <Printers list={printers}/>
+        <View style={styles.button}>
+          <Button title="Search printers" onPress={restartDiscovery} disabled={isDiscoverEnabled} />
+        </View>
         <View style={styles.button}>
           <Button title="Fetch Microservice" onPress={fetchTest} />
         </View>

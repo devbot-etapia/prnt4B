@@ -1,5 +1,4 @@
 import React from 'react'
-import { Card } from 'react-native-paper';
 import {Text,View} from 'react-native';  
 import { Section } from './Section';
 
@@ -11,16 +10,22 @@ const Printers = (props) => {
             const printer = props.list;
             printers = <Section title={printer.DeviceName}>
                 <Text>Target: {printer.Target}</Text>{'\n'}
+                <Text>BDAddress: {printer.BDAddress}</Text>{'\n'}
+                <Text>IpAddress: {printer.IpAddress}</Text>{'\n'}
                 <Text>MAC: {printer.MACAddress}</Text>
             </Section>
         }
         else {
-            printers = props.list.map(printer => 
-                <Card.Title
-                    title={printer.DeviceName}
-                    subtitle={printer.Target}
-                />
-            );
+            printers = <View>
+                {props.list.map(printer => 
+                    <Section title={printer.DeviceName}>
+                        <Text>Target: {printer.Target}</Text>{'\n'}
+                        <Text>BDAddress: {printer.BDAddress}</Text>{'\n'}
+                        <Text>IpAddress: {printer.IpAddress}</Text>{'\n'}
+                        <Text>MAC: {printer.MACAddress}</Text>
+                    </Section>
+                )}
+            </View>;
         }
     }
 
