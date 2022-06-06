@@ -333,8 +333,6 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     }
 
     private void createGhostKitchenReceipt(JSONObject order) throws JSONException {
-        StringBuilder textData = new StringBuilder();
-
         if (mPrinterSelected == null) {
             return;
         }
@@ -347,7 +345,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         try {
             mPrinterSelected.addPulse(Printer.PARAM_DEFAULT, Printer.PARAM_DEFAULT);
 
-            mPrinterSelected.addTextAlign(Printer.ALIGN_CENTER);
+            PrinterUtils.alignCenter(mPrinterSelected);
 
             mPrinterSelected.addTextSize(2, 2);
 
@@ -355,7 +353,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
             mPrinterSelected.addTextSize(1, 1);
 
-            textData.append("Order ").append(order.getString("id")).append("\n");
+            mPrinterSelected.addText("Order " + order.getString("id") + "\n");
 
             mPrinterSelected.addFeedLine(1);
             mPrinterSelected.addText(orderType + "\n");
@@ -363,26 +361,87 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             if(orderType.equals("delivery")){
                 mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.TRUE, Printer.FALSE);
                 String delivery = isExternalDelivery ? "External" : "Internal";
-                textData.append(delivery).append(" Delivery").append("\n");
+                mPrinterSelected.addText(delivery + " Delivery" + "\n");
                 mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
             }
+            String created_at = convertDate(order.getString("created_at"));
+            mPrinterSelected.addText("Placed: " + created_at + "\n");
 
-            textData.append("Placed ").append(convertDate(order.getString("created_at"))).append("\n");
+            String scheduledAt = order.getString("scheduledAt");
+             if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
+                 mPrinterSelected.addTextSmooth(Printer.FALSE);
+                 mPrinterSelected.addTextSize(2, 2);
+                 mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt) + "\n");
+                 mPrinterSelected.addTextSize(1, 1);
+                 mPrinterSelected.addTextSmooth(Printer.TRUE);
+             }
 
-            Object scheduledAt = order.get("scheduledAt");
-            // if(scheduledAt != null){
-            // Do negative text
-            // }
+            if(orderType.equals("pickup")){
+                int pickupEstimatedDuration = (order.getString("pickupEstimatedDuration").equals("null") || order.getString("pickupEstimatedDuration").equals("")) ? 0 : order.getInt("pickupEstimatedDuration");
+                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, pickupEstimatedDuration);
+                mPrinterSelected.addText("Pickup By: " + deliveryEstimatedDurationDate + "\n");
+            }
+            else if (orderType.equals("delivery")){
+                int deliveryEstimatedDuration = (order.getString("deliveryEstimatedDuration").equals("null") || order.getString("deliveryEstimatedDuration").equals("")) ? 0 : order.getInt("deliveryEstimatedDuration");
+                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, deliveryEstimatedDuration);
 
-            mPrinterSelected.addText(textData.toString());
-            textData.delete(0, textData.length());
+                mPrinterSelected.addText("Deliver By: " + deliveryEstimatedDurationDate + "\n");
+                String deliveryInstructions = order.getString("deliveryInstructions");
+                mPrinterSelected.addTextStyle(Printer.FALSE, Printer.TRUE, Printer.FALSE, Printer.FALSE);
+                mPrinterSelected.addText("Delivery Instructions \n");
+                mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+                mPrinterSelected.addText(deliveryInstructions + "\n");
+            }
 
-            mPrinterSelected.addTextSize(2, 2);
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.TRUE, Printer.FALSE, Printer.FALSE);
+            mPrinterSelected.addText("Customer Details \n");
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
 
-            mPrinterSelected.addTextAlign(Printer.ALIGN_LEFT);
-            mPrinterSelected.addText("TOTAL");
-            mPrinterSelected.addTextAlign(Printer.ALIGN_RIGHT);
-            mPrinterSelected.addText("0.00");
+            boolean isCustomer = !order.getString("customer").equals("null") && !order.getString("customer").equals("");
+            if(isCustomer){
+                JSONObject customer = order.getJSONObject("customer");
+                String firstName = customer.getString("firstName");
+                String lastName = customer.getString("lastName");
+                String phone = customer.getString("phone");
+                String addressLine1 = customer.getString("addressLine1");
+                String addressLine2 = customer.getString("addressLine2");
+                String addressCity = customer.getString("addressCity");
+                String addressState = customer.getString("addressState");
+                String addressZIP = customer.getString("addressZIP");
+                mPrinterSelected.addText(firstName + " " + lastName + "\n");
+                mPrinterSelected.addText(phone + "\n");
+                if (!addressLine1.equals("") && !addressLine1.equals("null")){
+                    mPrinterSelected.addText(addressLine1 + "\n");
+                }
+                if (!addressLine2.equals("") && !addressLine2.equals("null")){
+                    mPrinterSelected.addText(addressLine2 + "\n");
+                }
+                mPrinterSelected.addText(addressCity + ", " + addressState + " " + addressZIP + "\n");
+            }
+            else {
+                JSONObject guest = order.getJSONObject("guest");
+                String firstName = guest.getString("firstName");
+                String lastName = guest.getString("lastName");
+                String phone = guest.getString("phone");
+                String addressLine1 = guest.getString("addressLine1");
+                String addressLine2 = guest.getString("addressLine2");
+                String city = guest.getString("city");
+                String state = guest.getString("state");
+                String ZIP = guest.getString("ZIP");
+                mPrinterSelected.addText(firstName + " " + lastName + "\n");
+                mPrinterSelected.addText(phone + "\n");
+                if (!addressLine1.equals("") && !addressLine1.equals("null")){
+                    mPrinterSelected.addText(addressLine1 + "\n");
+                }
+                if (!addressLine2.equals("") && !addressLine2.equals("null")){
+                    mPrinterSelected.addText(addressLine2 + "\n");
+                }
+                mPrinterSelected.addText(city + ", " + state + " " + ZIP + "\n");
+            }
+
+            PrinterUtils.alignLeft(mPrinterSelected);
+            PrinterUtils.addBold(mPrinterSelected);
+            mPrinterSelected.addText("Order Details \n");
 
             mPrinterSelected.addFeedLine(1);
             mPrinterSelected.addCut(Printer.CUT_FEED);
@@ -410,6 +469,29 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
             result = outputDateFormat.format(inputDate);
 
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+
+        return result;
+    }
+
+    @NonNull
+    private String addSecondsToDate(String dateString, int seconds) throws ParseException {
+        String result = "";
+        try
+        {
+            @SuppressLint("SimpleDateFormat") Date inputDate= new SimpleDateFormat("dd, MMMM yyyy HH:mm").parse(dateString);
+
+            if (inputDate != null) {
+                long allSeconds = inputDate.getTime();
+                allSeconds = allSeconds + (seconds * 1000L);
+                inputDate = new Date(allSeconds);
+            }
+            SimpleDateFormat outputDateFormat = new SimpleDateFormat("dd, MMMM yyyy HH:mm", Locale.ENGLISH);
+            if (inputDate != null) {
+                result = outputDateFormat.format(inputDate);
+            }
         } catch (ParseException e) {
             e.printStackTrace();
         }
@@ -453,6 +535,30 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             } catch (Epos2Exception e) {
                 e.printStackTrace();
             }
+        }
+    }
+}
+
+class PrinterUtils {
+    public static void addBold(Printer mPrinterSelected){
+        try {
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.TRUE, Printer.FALSE);
+        } catch (Epos2Exception e) {
+            e.printStackTrace();
+        }
+    }
+    public static void alignLeft(Printer mPrinterSelected){
+        try {
+            mPrinterSelected.addTextAlign(Printer.ALIGN_LEFT);
+        } catch (Epos2Exception e) {
+            e.printStackTrace();
+        }
+    }
+    public static void alignCenter(Printer mPrinterSelected){
+        try {
+            mPrinterSelected.addTextAlign(Printer.ALIGN_CENTER);
+        } catch (Epos2Exception e) {
+            e.printStackTrace();
         }
     }
 }
