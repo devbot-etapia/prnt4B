@@ -6,43 +6,19 @@ import { SubmitMACs } from './src/components/Services';
 import InputText from './src/components/Input';
 import EpsonNative, { TransferDataToSDK, StartDiscovery } from './src/components/EpsonNative';
 import Printers from './src/components/Printers';
-
-const Section = ({ children, title }) => {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-};
+import { Section } from './src/components/Section';
 
 const App = () => {
   const isDarkMode = useColorScheme() === 'dark';
   //useTimer(30, StartDiscovery, false);
-  //const [printers , setPrinters] = useState(null);
+  const [printers , setPrinters] = useState(null);
   
   useEffect(() => {
     StartDiscovery()
     DeviceEventEmitter.addListener("printers", (printersListened) => {
       console.log(printersListened);
-      //setPrinters(printersListened)
+      debugger
+      setPrinters(printersListened)
     });
   }, []);
 
@@ -61,11 +37,11 @@ const App = () => {
           requests periodicity to search for new printings
         </Section>
         <InputText />
+        <Printers list={printers}/>
         <View style={styles.button}>
           <Button title="Fetch Microservice" onPress={fetchTest} />
         </View>
         <EpsonNative />
-        {/* <Printers list={printers}/> */}
       </ScrollView>
     </View>
   );
@@ -76,19 +52,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignContent: 'center',
     justifyContent: 'center'
-  },
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
   },
   highlight: {
     fontWeight: '700',

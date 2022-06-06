@@ -1,29 +1,32 @@
-// import React from 'react'
-// import { Card } from 'react-native-paper';
-// import {Text} from 'react-native';  
+import React from 'react'
+import { Card } from 'react-native-paper';
+import {Text,View} from 'react-native';  
+import { Section } from './Section';
 
-// const Printers = (props) => {
-//     const printers = <Text>0 printers found</Text>;
+const Printers = (props) => {
+    let printers = <Section title='0 printers found' />
 
-//     if(props.list != null ){
-//         if(typeof(props.list) == "object"){
-//             const printer = props.list;
-//             printers =  <Card.Title
-//                 title={printer.DeviceName}
-//                 subtitle={printer.Target}
-//             />;
-//         }
-//         else {
-//             printers = props.list.map(printer => 
-//                 <Card.Title
-//                     title={printer.DeviceName}
-//                     subtitle={printer.Target}
-//                 />
-//             );
-//         }
-//     }
+    if(props.list != null ){
+        if(typeof(props.list) == "object"){
+            const printer = props.list;
+            printers = <Section title={printer.DeviceName}>
+                <Text>Target: {printer.Target}</Text>{'\n'}
+                <Text>MAC: {printer.MACAddress}</Text>
+            </Section>
+        }
+        else {
+            printers = props.list.map(printer => 
+                <Card.Title
+                    title={printer.DeviceName}
+                    subtitle={printer.Target}
+                />
+            );
+        }
+    }
 
-//     return printers
-// }
+    return <View>
+        {printers}
+    </View>;
+}
 
-// export default Printers
+export default Printers
