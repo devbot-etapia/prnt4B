@@ -14,8 +14,8 @@ const App = () => {
   const [printers , setPrinters] = useState(null);
   const [isDiscoverEnabled , setIsDiscoverEnabled] = useState(false);
   
-  useEffect(async () => {
-    await restartDiscovery()
+  useEffect(() => {
+    restartDiscovery()
     DeviceEventEmitter.addListener("printers", (printersListened) => {
       console.log(printersListened);
       setPrinters(printersListened)
@@ -27,9 +27,10 @@ const App = () => {
     await TransferDataToSDK(JSON.stringify(data));
   };
 
-  const restartDiscovery = async () => {
+  const restartDiscovery = () => {
     setIsDiscoverEnabled(true);
-    await StartDiscovery().then(data => {
+    setPrinters(null);
+    StartDiscovery().then(data => {
       setTimeout(() => {
         setIsDiscoverEnabled(false);
       }, 3000);
