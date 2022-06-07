@@ -41,7 +41,7 @@ import org.json.JSONObject;
 public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveListener {
     private static ReactApplicationContext reactContext;
     private static Printer mPrinterSelected;
-    private static int columnWidth;
+    public static int columnWidth;
     private DeviceEventManagerModule.RCTDeviceEventEmitter mEmitter = null;
 
     EpsonModule(ReactApplicationContext context) {
@@ -300,46 +300,110 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
     }
 
-    private void createRestaurantReceipt(JSONObject jsonObject) throws JSONException {
-        StringBuilder textData = new StringBuilder();
-
+    private void createGhostKitchenReceipt(JSONObject order) throws JSONException {
         if (mPrinterSelected == null) {
             return;
         }
 
-        JSONArray restaurants = jsonObject.getJSONArray("restaurants");
-        //Object restaurant = restaurants.get(0);
-        String restaurantName = "Chanchito Feliz";
+        JSONObject ghostKitchen = order.getJSONObject("ghostKitchen");
+        JSONObject account = ghostKitchen.getJSONObject("account");
+
+        String orderType = order.getString("orderType");
+        String timezone = ghostKitchen.getString("timezone");
+        String currency = getCurrency(account.getString("currencyCode"));
+        boolean isExternalDelivery = order.getBoolean("isExternalDelivery");
+
         try {
             mPrinterSelected.addPulse(Printer.PARAM_DEFAULT, Printer.PARAM_DEFAULT);
 
-            mPrinterSelected.addTextAlign(Printer.ALIGN_CENTER);
+            PrinterUtils.alignCenter(mPrinterSelected);
+
+            mPrinterSelected.addTextSize(1, 2);
+
+            mPrinterSelected.addTextStyle(Printer.TRUE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+            mPrinterSelected.addText(" Ghost Kitchen Order \n");
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
 
             mPrinterSelected.addTextSize(2, 2);
 
-            mPrinterSelected.addText(restaurantName + "\n");
+            mPrinterSelected.addText(ghostKitchen.getString("name") + "\n");
 
             mPrinterSelected.addTextSize(1, 1);
 
-            textData.append("DEVELOPER – OMAR MARTINEZ\n");
+            mPrinterSelected.addText("Order " + order.getString("id") + "\n");
 
-            mPrinterSelected.addText(textData.toString());
-            textData.delete(0, textData.length());
+            mPrinterSelected.addText(orderType.toUpperCase() + "\n");
 
-            mPrinterSelected.addTextSize(2, 2);
+            if(orderType.equals("delivery")){
+                PrinterUtils.addBold(mPrinterSelected);
+                String delivery = isExternalDelivery ? "External" : "Internal";
+                mPrinterSelected.addText(delivery + " Delivery" + "\n");
+                PrinterUtils.removeStyles(mPrinterSelected);
+            }
+            String created_at = convertDate(order.getString("created_at"));
+            mPrinterSelected.addText("Placed: " + created_at + "\n");
 
-            mPrinterSelected.addText("TOTAL    45.24\n");
+            String scheduledAt = order.getString("scheduledAt");
+            if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
+                mPrinterSelected.addTextSmooth(Printer.FALSE);
+                mPrinterSelected.addTextSize(2, 2);
+                mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt) + "\n");
+                mPrinterSelected.addTextSize(1, 1);
+                mPrinterSelected.addTextSmooth(Printer.TRUE);
+            }
 
-            mPrinterSelected.addFeedLine(1);
+            if(orderType.equals("pickup")){
+                int pickupEstimatedDuration = (order.getString("pickupEstimatedDuration").equals("null") || order.getString("pickupEstimatedDuration").equals("")) ? 0 : order.getInt("pickupEstimatedDuration");
+                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, pickupEstimatedDuration);
+                mPrinterSelected.addText("Pickup By: " + deliveryEstimatedDurationDate + "\n");
+            }
+            else if (orderType.equals("delivery")){
+                int deliveryEstimatedDuration = (order.getString("deliveryEstimatedDuration").equals("null") || order.getString("deliveryEstimatedDuration").equals("")) ? 0 : order.getInt("deliveryEstimatedDuration");
+                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, deliveryEstimatedDuration);
+
+                mPrinterSelected.addText("Deliver By: " + deliveryEstimatedDurationDate + "\n");
+                String deliveryInstructions = order.getString("deliveryInstructions");
+                PrinterUtils.addUnderLine(mPrinterSelected);
+                mPrinterSelected.addText("Delivery Instructions \n");
+                PrinterUtils.removeStyles(mPrinterSelected);
+                mPrinterSelected.addText(deliveryInstructions + "\n");
+            }
+
+            PrinterUtils.addUnderLine(mPrinterSelected);
+            mPrinterSelected.addText("Customer Details \n");
+            PrinterUtils.removeStyles(mPrinterSelected);
+
+            ReceiptUtils.AddCustomer(mPrinterSelected, order);
+
+            PrinterUtils.alignLeft(mPrinterSelected);
+            PrinterUtils.addBold(mPrinterSelected);
+            mPrinterSelected.addText("Order Details \n");
+            PrinterUtils.removeStyles(mPrinterSelected);
+
+            JSONArray restaurants = order.getJSONArray("restaurants");
+            for (int r = 0; r < restaurants.length(); r++){
+                JSONObject restaurant = restaurants.getJSONObject(r);
+                String restaurantName = restaurant.getString("name");
+                mPrinterSelected.addText(restaurantName + "\n");
+
+                int restaurantId = Integer.parseInt(restaurant.getString("id"));
+                ReceiptUtils.AddItems(mPrinterSelected, order, restaurantId, false, currency);
+            }
+
+            ReceiptUtils.AddLine(mPrinterSelected, '—');
+            ReceiptUtils.AddTotals(mPrinterSelected, order, currency);
+
+            mPrinterSelected.addFeedLine(2);
             mPrinterSelected.addCut(Printer.CUT_FEED);
         }
         catch (Exception e) {
             mPrinterSelected.clearCommandBuffer();
             e.printStackTrace();
+            Toast.makeText(reactContext, "Print transformed ghost kitchen failed", Toast.LENGTH_LONG).show();
         }
     }
 
-    private void createGhostKitchenReceipt(JSONObject order) throws JSONException {
+    private void createRestaurantReceipt(JSONObject order) throws JSONException {
         if (mPrinterSelected == null) {
             return;
         }
@@ -347,11 +411,10 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         JSONArray restaurants = order.getJSONArray("restaurants");
         JSONArray items = order.getJSONArray("items");
         JSONObject firstRestaurant = restaurants.getJSONObject(0);
-        JSONObject ghostKitchen = order.getJSONObject("ghostKitchen");
-        JSONObject account = ghostKitchen.getJSONObject("account");
+        JSONObject account = firstRestaurant.getJSONObject("account");
 
         String orderType = order.getString("orderType");
-        String timezone = ghostKitchen.getString("timezone");
+        String timezone = firstRestaurant.getString("timezone");
         String currency = getCurrency(account.getString("currencyCode"));
         boolean isExternalDelivery = order.getBoolean("isExternalDelivery");
 
@@ -409,132 +472,16 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             mPrinterSelected.addText("Customer Details \n");
             PrinterUtils.removeStyles(mPrinterSelected);
 
-            boolean isCustomer = !order.getString("customer").equals("null") && !order.getString("customer").equals("");
-            if(isCustomer){
-                JSONObject customer = order.getJSONObject("customer");
-                String firstName = customer.getString("firstName");
-                String lastName = customer.getString("lastName");
-                String phone = customer.getString("phone");
-                String addressLine1 = customer.getString("addressLine1");
-                String addressLine2 = customer.getString("addressLine2");
-                String addressCity = customer.getString("addressCity");
-                String addressState = customer.getString("addressState");
-                String addressZIP = customer.getString("addressZIP");
-                mPrinterSelected.addText(firstName + " " + lastName + "\n");
-                mPrinterSelected.addText(phone + "\n");
-                if (!addressLine1.equals("") && !addressLine1.equals("null")){
-                    mPrinterSelected.addText(addressLine1 + "\n");
-                }
-                if (!addressLine2.equals("") && !addressLine2.equals("null")){
-                    mPrinterSelected.addText(addressLine2 + "\n");
-                }
-                String address = "";
-                if(!addressCity.equals("") && !addressCity.equals("null")){
-                    address = addressCity;
-                }
-                if(!addressState.equals("") && !addressState.equals("null")){
-                    if(address.equals("")){
-                        address = addressState;
-                    }
-                    else {
-                        address += ", " + addressState;
-                    }
-                }
-                if(!addressZIP.equals("") && !addressZIP.equals("null")){
-                    address += " " + addressState;
-                }
-                if(!address.equals("")){
-                    mPrinterSelected.addText(address + "\n");
-                }
-            }
-            else {
-                JSONObject guest = order.getJSONObject("guest");
-                String firstName = guest.getString("firstName");
-                String lastName = guest.getString("lastName");
-                String phone = guest.getString("phone");
-                String addressLine1 = guest.getString("addressLine1");
-                String addressLine2 = guest.getString("addressLine2");
-                String city = guest.getString("city");
-                String state = guest.getString("state");
-                String ZIP = guest.getString("ZIP");
-                mPrinterSelected.addText(firstName + " " + lastName + "\n");
-                mPrinterSelected.addText(phone + "\n");
-                if (!addressLine1.equals("") && !addressLine1.equals("null")){
-                    mPrinterSelected.addText(addressLine1 + "\n");
-                }
-                if (!addressLine2.equals("") && !addressLine2.equals("null")){
-                    mPrinterSelected.addText(addressLine2 + "\n");
-                }
-                String address = "";
-                if(!city.equals("") && !city.equals("null")){
-                    address = city;
-                }
-                if(!state.equals("") && !state.equals("null")){
-                    if(address.equals("")){
-                        address = state;
-                    }
-                    else {
-                        address += ", " + state;
-                    }
-                }
-                if(!ZIP.equals("") && !ZIP.equals("null")){
-                    address += " " + ZIP;
-                }
-                if(!address.equals("")){
-                    mPrinterSelected.addText(address + "\n");
-                }
-            }
+            ReceiptUtils.AddCustomer(mPrinterSelected, order);
 
             PrinterUtils.alignLeft(mPrinterSelected);
             PrinterUtils.addBold(mPrinterSelected);
             mPrinterSelected.addText("Order Details \n");
             PrinterUtils.removeStyles(mPrinterSelected);
 
-            for (int r = 0; r < restaurants.length(); r++){
-                JSONObject restaurant = restaurants.getJSONObject(r);
-                String restaurantName = restaurant.getString("name");
-                mPrinterSelected.addText(restaurantName + "\n");
+            ReceiptUtils.AddItems(mPrinterSelected, order, 0, true, currency);
 
-                int restaurantId = Integer.parseInt(restaurant.getString("id"));
-                for (int i = 0; i < items.length(); i++){
-                    JSONObject item = items.getJSONObject(i);
-                    int itemRestaurantId = Integer.parseInt(item.getString("restaurantId"));
-                    if(itemRestaurantId == restaurantId){
-                        JSONObject menuItem = item.getJSONObject("menuItem");
-                        String menuItemName = menuItem.getString("name");
-                        int itemQuantity = (item.getString("quantity").equals("") || item.getString("quantity").equals("null")) ? 0 : Integer.parseInt(item.getString("quantity"));
-                        double cost = ((menuItem.getString("cost").equals("") || menuItem.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItem.getString("cost"))) / 100 * itemQuantity;
-                        String costFormatted = numberFormat(cost);
-
-                        String quantityNName = "(" + itemQuantity + ")" + menuItemName;
-                        String currencyNCost = currency + costFormatted;
-                        mPrinterSelected.addText(padLine(quantityNName, currencyNCost) + "\n");
-
-                        String specialInstructions = item.getString("specialInstructions");
-                        if(!specialInstructions.equals("") && !specialInstructions.equals("null")){
-                            PrinterUtils.addUnderLineAndBold(mPrinterSelected);
-                            mPrinterSelected.addText("Special Instructions:");
-                            PrinterUtils.removeStyles(mPrinterSelected);
-                            mPrinterSelected.addText(" " + specialInstructions + "\n");
-                        }
-
-                        JSONArray modifiers = item.getJSONArray("modifiers");
-                        for (int m = 0; m < modifiers.length(); m++){
-                            JSONObject modifier = modifiers.getJSONObject(m);
-                            JSONArray selections = modifier.getJSONArray("selections");
-                            for (int s = 0; s < selections.length(); s++){
-                                JSONObject selection = selections.getJSONObject(s);
-                                JSONObject menuItemModifierSelection = selection.getJSONObject("menuItemModifierSelection");
-                                double costSel = ((menuItemModifierSelection.getString("cost").equals("") || menuItemModifierSelection.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItemModifierSelection.getString("cost"))) / 100 * itemQuantity;
-                                String costSelFormatted = numberFormat(costSel);
-                                int selQuantity = (selection.getString("quantity").equals("") || selection.getString("quantity").equals("null")) ? 0 : Integer.parseInt(selection.getString("quantity"));
-                                String menuItemModifierSelectionName = menuItemModifierSelection.getString("name");
-                                formatModSelections(selQuantity, menuItemModifierSelectionName, false, currency, costSelFormatted, itemQuantity, false);
-                            }
-                        }
-                    }
-                }
-            }
+            ReceiptUtils.AddTotals(mPrinterSelected, order, currency);
 
             mPrinterSelected.addFeedLine(2);
             mPrinterSelected.addCut(Printer.CUT_FEED);
@@ -542,7 +489,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         catch (Exception e) {
             mPrinterSelected.clearCommandBuffer();
             e.printStackTrace();
-            Toast.makeText(reactContext, "Print transformed json failed", Toast.LENGTH_LONG).show();
+            Toast.makeText(reactContext, "Print transformed restaurant failed", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -572,7 +519,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
     @NonNull
     @Contract(pure = true)
-    private String numberFormat(double number){
+    public static String numberFormat(double number){
         DecimalFormat df = new DecimalFormat("0.00");
         return df.format(number);
     }
@@ -608,7 +555,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         return result;
     }
 
-    private String padLine(@Nullable String partOne, @Nullable String partTwo){
+    public static String padLine(@Nullable String partOne, @Nullable String partTwo){
         if(partOne == null) {partOne = "";}
         if(partTwo == null) {partTwo = "";}
         String concat;
@@ -621,7 +568,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         return concat;
     }
 
-    private void formatModSelections(int quantity, String name, boolean includeCost, String currencySymbol, String costFormatted, int itemQuantity, boolean enableItemQuantity) throws Epos2Exception {
+    public static void formatModSelections(int quantity, String name, boolean includeCost, String currencySymbol, String costFormatted, int itemQuantity, boolean enableItemQuantity) throws Epos2Exception {
         double cost = includeCost ? Double.parseDouble(costFormatted) : 0.0;
 
         String prefix = "";
@@ -687,9 +634,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
     }
 
-
-    /** utility: string repeat */
-    protected String repeat(String str, int i){
+    protected static String repeat(String str, int i){
         return new String(new char[i]).replace("\0", str);
     }
 
@@ -730,6 +675,161 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 e.printStackTrace();
             }
         }
+    }
+}
+
+class ReceiptUtils {
+    public static void AddLine(Printer mPrinterSelected, Character character) throws Epos2Exception {
+        String line = EpsonModule.repeat(character.toString(), EpsonModule.columnWidth);
+        mPrinterSelected.addText(line + "\n");
+    }
+
+    public static void AddItems(Printer mPrinterSelected, JSONObject order, int restaurantId, boolean isRestaurant, String currency) throws JSONException, Epos2Exception {
+        JSONArray items = order.getJSONArray("items");
+        for (int i = 0; i < items.length(); i++){
+            JSONObject item = items.getJSONObject(i);
+            int itemRestaurantId = Integer.parseInt(item.getString("restaurantId"));
+            if(!isRestaurant && itemRestaurantId != restaurantId){
+                continue;
+            }
+            JSONObject menuItem = item.getJSONObject("menuItem");
+            String menuItemName = menuItem.getString("name");
+            int itemQuantity = (item.getString("quantity").equals("") || item.getString("quantity").equals("null")) ? 0 : Integer.parseInt(item.getString("quantity"));
+            double cost = ((menuItem.getString("cost").equals("") || menuItem.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItem.getString("cost"))) / 100 * itemQuantity;
+            String costFormatted = EpsonModule.numberFormat(cost);
+
+            String quantityNName = "(" + itemQuantity + ")" + menuItemName;
+            String currencyNCost = currency + costFormatted;
+            mPrinterSelected.addText(EpsonModule.padLine(quantityNName, currencyNCost) + "\n");
+
+            String specialInstructions = item.getString("specialInstructions");
+            if(!specialInstructions.equals("") && !specialInstructions.equals("null")){
+                PrinterUtils.addUnderLineAndBold(mPrinterSelected);
+                mPrinterSelected.addText("Special Instructions:");
+                PrinterUtils.removeStyles(mPrinterSelected);
+                mPrinterSelected.addText(" " + specialInstructions + "\n");
+            }
+
+            JSONArray modifiers = item.getJSONArray("modifiers");
+            for (int m = 0; m < modifiers.length(); m++){
+                JSONObject modifier = modifiers.getJSONObject(m);
+                JSONArray selections = modifier.getJSONArray("selections");
+                for (int s = 0; s < selections.length(); s++){
+                    JSONObject selection = selections.getJSONObject(s);
+                    JSONObject menuItemModifierSelection = selection.getJSONObject("menuItemModifierSelection");
+                    double costSel = ((menuItemModifierSelection.getString("cost").equals("") || menuItemModifierSelection.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItemModifierSelection.getString("cost"))) / 100 * itemQuantity;
+                    String costSelFormatted = EpsonModule.numberFormat(costSel);
+                    int selQuantity = (selection.getString("quantity").equals("") || selection.getString("quantity").equals("null")) ? 0 : Integer.parseInt(selection.getString("quantity"));
+                    String menuItemModifierSelectionName = menuItemModifierSelection.getString("name");
+                    EpsonModule.formatModSelections(selQuantity, menuItemModifierSelectionName, false, currency, costSelFormatted, itemQuantity, false);
+                }
+            }
+
+        }
+    }
+
+    public static void AddCustomer(Printer mPrinterSelected, JSONObject order) throws JSONException, Epos2Exception {
+        boolean isCustomer = !order.getString("customer").equals("null") && !order.getString("customer").equals("");
+        if(isCustomer){
+            JSONObject customer = order.getJSONObject("customer");
+            String firstName = customer.getString("firstName");
+            String lastName = customer.getString("lastName");
+            String phone = customer.getString("phone");
+            String addressLine1 = customer.getString("addressLine1");
+            String addressLine2 = customer.getString("addressLine2");
+            String addressCity = customer.getString("addressCity");
+            String addressState = customer.getString("addressState");
+            String addressZIP = customer.getString("addressZIP");
+            mPrinterSelected.addText(firstName + " " + lastName + "\n");
+            mPrinterSelected.addText(phone + "\n");
+            if (!addressLine1.equals("") && !addressLine1.equals("null")){
+                mPrinterSelected.addText(addressLine1 + "\n");
+            }
+            if (!addressLine2.equals("") && !addressLine2.equals("null")){
+                mPrinterSelected.addText(addressLine2 + "\n");
+            }
+            String address = "";
+            if(!addressCity.equals("") && !addressCity.equals("null")){
+                address = addressCity;
+            }
+            if(!addressState.equals("") && !addressState.equals("null")){
+                if(address.equals("")){
+                    address = addressState;
+                }
+                else {
+                    address += ", " + addressState;
+                }
+            }
+            if(!addressZIP.equals("") && !addressZIP.equals("null")){
+                address += " " + addressState;
+            }
+            if(!address.equals("")){
+                mPrinterSelected.addText(address + "\n");
+            }
+        }
+        else {
+            JSONObject guest = order.getJSONObject("guest");
+            String firstName = guest.getString("firstName");
+            String lastName = guest.getString("lastName");
+            String phone = guest.getString("phone");
+            String addressLine1 = guest.getString("addressLine1");
+            String addressLine2 = guest.getString("addressLine2");
+            String city = guest.getString("city");
+            String state = guest.getString("state");
+            String ZIP = guest.getString("ZIP");
+            mPrinterSelected.addText(firstName + " " + lastName + "\n");
+            mPrinterSelected.addText(phone + "\n");
+            if (!addressLine1.equals("") && !addressLine1.equals("null")){
+                mPrinterSelected.addText(addressLine1 + "\n");
+            }
+            if (!addressLine2.equals("") && !addressLine2.equals("null")){
+                mPrinterSelected.addText(addressLine2 + "\n");
+            }
+            String address = "";
+            if(!city.equals("") && !city.equals("null")){
+                address = city;
+            }
+            if(!state.equals("") && !state.equals("null")){
+                if(address.equals("")){
+                    address = state;
+                }
+                else {
+                    address += ", " + state;
+                }
+            }
+            if(!ZIP.equals("") && !ZIP.equals("null")){
+                address += " " + ZIP;
+            }
+            if(!address.equals("")){
+                mPrinterSelected.addText(address + "\n");
+            }
+        }
+    }
+
+    public static void AddTotals(Printer mPrinterSelected, JSONObject order, String currency) throws JSONException, Epos2Exception {
+        double preTaxTotal = ((order.getString("preTaxTotal").equals("") || order.getString("preTaxTotal").equals("null")) ? 0 : Double.parseDouble(order.getString("preTaxTotal"))) / 100;
+        String preTaxTotalS = currency + EpsonModule.numberFormat(preTaxTotal);
+        mPrinterSelected.addText(EpsonModule.padLine("Sub Total", preTaxTotalS) + "\n");
+
+        double totalTax = ((order.getString("totalTax").equals("") || order.getString("totalTax").equals("null")) ? 0 : Double.parseDouble(order.getString("totalTax"))) / 100;
+        String totalTaxS = currency + EpsonModule.numberFormat(totalTax);
+        mPrinterSelected.addText(EpsonModule.padLine("Tax", totalTaxS) + "\n");
+
+        double totalTip = ((order.getString("totalTip").equals("") || order.getString("totalTip").equals("null")) ? 0 : Double.parseDouble(order.getString("totalTip"))) / 100;
+        String totalTipS = currency + EpsonModule.numberFormat(totalTip);
+        mPrinterSelected.addText(EpsonModule.padLine("Tip", totalTipS) + "\n");
+
+        double serviceFee = ((order.getString("serviceFee").equals("") || order.getString("serviceFee").equals("null")) ? 0 : Double.parseDouble(order.getString("serviceFee"))) / 100;
+        String serviceFeeS = currency + EpsonModule.numberFormat(serviceFee);
+        mPrinterSelected.addText(EpsonModule.padLine("Service Fee", serviceFeeS) + "\n");
+
+        double deliveryFee = ((order.getString("totalDeliveryFee").equals("") || order.getString("totalDeliveryFee").equals("null")) ? 0 : Double.parseDouble(order.getString("totalDeliveryFee"))) / 100;
+        String deliveryFeeS = currency + EpsonModule.numberFormat(deliveryFee);
+        mPrinterSelected.addText(EpsonModule.padLine("Delivery Fee", deliveryFeeS) + "\n");
+
+        double totalCharged = ((order.getString("totalCharged").equals("") || order.getString("totalCharged").equals("null")) ? 0 : Double.parseDouble(order.getString("totalCharged"))) / 100;
+        String totalChargedS = currency + EpsonModule.numberFormat(totalCharged);
+        mPrinterSelected.addText(EpsonModule.padLine("Total", totalChargedS) + "\n");
     }
 }
 
