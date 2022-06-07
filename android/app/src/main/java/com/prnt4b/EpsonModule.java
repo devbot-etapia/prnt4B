@@ -9,10 +9,14 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.text.DecimalFormat;
+import java.text.MessageFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Currency;
 import java.util.Date;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import com.epson.epos2.printer.PrinterStatusInfo;
 import com.epson.epos2.printer.ReceiveListener;
@@ -29,6 +33,7 @@ import com.epson.epos2.printer.Printer;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
+import org.jetbrains.annotations.Contract;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,11 +41,13 @@ import org.json.JSONObject;
 public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveListener {
     private static ReactApplicationContext reactContext;
     private static Printer mPrinterSelected;
+    private static int columnWidth;
     private DeviceEventManagerModule.RCTDeviceEventEmitter mEmitter = null;
 
     EpsonModule(ReactApplicationContext context) {
         super(context);
         reactContext = context;
+        columnWidth = 42;
     }
 
     @Override
@@ -338,8 +345,14 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
 
         JSONArray restaurants = order.getJSONArray("restaurants");
-        JSONObject restaurant = restaurants.getJSONObject(0);
+        JSONArray items = order.getJSONArray("items");
+        JSONObject firstRestaurant = restaurants.getJSONObject(0);
+        JSONObject ghostKitchen = order.getJSONObject("ghostKitchen");
+        JSONObject account = ghostKitchen.getJSONObject("account");
+
         String orderType = order.getString("orderType");
+        String timezone = ghostKitchen.getString("timezone");
+        String currency = getCurrency(account.getString("currencyCode"));
         boolean isExternalDelivery = order.getBoolean("isExternalDelivery");
 
         try {
@@ -349,26 +362,25 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
             mPrinterSelected.addTextSize(2, 2);
 
-            mPrinterSelected.addText(restaurant.getString("name") + "\n");
+            mPrinterSelected.addText(firstRestaurant.getString("name") + "\n");
 
             mPrinterSelected.addTextSize(1, 1);
 
             mPrinterSelected.addText("Order " + order.getString("id") + "\n");
 
-            mPrinterSelected.addFeedLine(1);
-            mPrinterSelected.addText(orderType + "\n");
+            mPrinterSelected.addText(orderType.toUpperCase() + "\n");
 
             if(orderType.equals("delivery")){
-                mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.TRUE, Printer.FALSE);
+                PrinterUtils.addBold(mPrinterSelected);
                 String delivery = isExternalDelivery ? "External" : "Internal";
                 mPrinterSelected.addText(delivery + " Delivery" + "\n");
-                mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+                PrinterUtils.removeStyles(mPrinterSelected);
             }
             String created_at = convertDate(order.getString("created_at"));
             mPrinterSelected.addText("Placed: " + created_at + "\n");
 
             String scheduledAt = order.getString("scheduledAt");
-             if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
+            if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
                  mPrinterSelected.addTextSmooth(Printer.FALSE);
                  mPrinterSelected.addTextSize(2, 2);
                  mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt) + "\n");
@@ -387,15 +399,15 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
                 mPrinterSelected.addText("Deliver By: " + deliveryEstimatedDurationDate + "\n");
                 String deliveryInstructions = order.getString("deliveryInstructions");
-                mPrinterSelected.addTextStyle(Printer.FALSE, Printer.TRUE, Printer.FALSE, Printer.FALSE);
+                PrinterUtils.addUnderLine(mPrinterSelected);
                 mPrinterSelected.addText("Delivery Instructions \n");
-                mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+                PrinterUtils.removeStyles(mPrinterSelected);
                 mPrinterSelected.addText(deliveryInstructions + "\n");
             }
 
-            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.TRUE, Printer.FALSE, Printer.FALSE);
+            PrinterUtils.addUnderLine(mPrinterSelected);
             mPrinterSelected.addText("Customer Details \n");
-            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+            PrinterUtils.removeStyles(mPrinterSelected);
 
             boolean isCustomer = !order.getString("customer").equals("null") && !order.getString("customer").equals("");
             if(isCustomer){
@@ -416,7 +428,24 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 if (!addressLine2.equals("") && !addressLine2.equals("null")){
                     mPrinterSelected.addText(addressLine2 + "\n");
                 }
-                mPrinterSelected.addText(addressCity + ", " + addressState + " " + addressZIP + "\n");
+                String address = "";
+                if(!addressCity.equals("") && !addressCity.equals("null")){
+                    address = addressCity;
+                }
+                if(!addressState.equals("") && !addressState.equals("null")){
+                    if(address.equals("")){
+                        address = addressState;
+                    }
+                    else {
+                        address += ", " + addressState;
+                    }
+                }
+                if(!addressZIP.equals("") && !addressZIP.equals("null")){
+                    address += " " + addressState;
+                }
+                if(!address.equals("")){
+                    mPrinterSelected.addText(address + "\n");
+                }
             }
             else {
                 JSONObject guest = order.getJSONObject("guest");
@@ -436,19 +465,84 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 if (!addressLine2.equals("") && !addressLine2.equals("null")){
                     mPrinterSelected.addText(addressLine2 + "\n");
                 }
-                mPrinterSelected.addText(city + ", " + state + " " + ZIP + "\n");
+                String address = "";
+                if(!city.equals("") && !city.equals("null")){
+                    address = city;
+                }
+                if(!state.equals("") && !state.equals("null")){
+                    if(address.equals("")){
+                        address = state;
+                    }
+                    else {
+                        address += ", " + state;
+                    }
+                }
+                if(!ZIP.equals("") && !ZIP.equals("null")){
+                    address += " " + ZIP;
+                }
+                if(!address.equals("")){
+                    mPrinterSelected.addText(address + "\n");
+                }
             }
 
             PrinterUtils.alignLeft(mPrinterSelected);
             PrinterUtils.addBold(mPrinterSelected);
             mPrinterSelected.addText("Order Details \n");
+            PrinterUtils.removeStyles(mPrinterSelected);
 
-            mPrinterSelected.addFeedLine(1);
+            for (int r = 0; r < restaurants.length(); r++){
+                JSONObject restaurant = restaurants.getJSONObject(r);
+                String restaurantName = restaurant.getString("name");
+                mPrinterSelected.addText(restaurantName + "\n");
+
+                int restaurantId = Integer.parseInt(restaurant.getString("id"));
+                for (int i = 0; i < items.length(); i++){
+                    JSONObject item = items.getJSONObject(i);
+                    int itemRestaurantId = Integer.parseInt(item.getString("restaurantId"));
+                    if(itemRestaurantId == restaurantId){
+                        JSONObject menuItem = item.getJSONObject("menuItem");
+                        String menuItemName = menuItem.getString("name");
+                        int itemQuantity = (item.getString("quantity").equals("") || item.getString("quantity").equals("null")) ? 0 : Integer.parseInt(item.getString("quantity"));
+                        double cost = ((menuItem.getString("cost").equals("") || menuItem.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItem.getString("cost"))) / 100 * itemQuantity;
+                        String costFormatted = numberFormat(cost);
+
+                        String quantityNName = "(" + itemQuantity + ")" + menuItemName;
+                        String currencyNCost = currency + costFormatted;
+                        mPrinterSelected.addText(padLine(quantityNName, currencyNCost) + "\n");
+
+                        String specialInstructions = item.getString("specialInstructions");
+                        if(!specialInstructions.equals("") && !specialInstructions.equals("null")){
+                            PrinterUtils.addUnderLineAndBold(mPrinterSelected);
+                            mPrinterSelected.addText("Special Instructions:");
+                            PrinterUtils.removeStyles(mPrinterSelected);
+                            mPrinterSelected.addText(" " + specialInstructions + "\n");
+                        }
+
+                        JSONArray modifiers = item.getJSONArray("modifiers");
+                        for (int m = 0; m < modifiers.length(); m++){
+                            JSONObject modifier = modifiers.getJSONObject(m);
+                            JSONArray selections = modifier.getJSONArray("selections");
+                            for (int s = 0; s < selections.length(); s++){
+                                JSONObject selection = selections.getJSONObject(s);
+                                JSONObject menuItemModifierSelection = selection.getJSONObject("menuItemModifierSelection");
+                                double costSel = ((menuItemModifierSelection.getString("cost").equals("") || menuItemModifierSelection.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItemModifierSelection.getString("cost"))) / 100 * itemQuantity;
+                                String costSelFormatted = numberFormat(costSel);
+                                int selQuantity = (selection.getString("quantity").equals("") || selection.getString("quantity").equals("null")) ? 0 : Integer.parseInt(selection.getString("quantity"));
+                                String menuItemModifierSelectionName = menuItemModifierSelection.getString("name");
+                                formatModSelections(selQuantity, menuItemModifierSelectionName, false, currency, costSelFormatted, itemQuantity, false);
+                            }
+                        }
+                    }
+                }
+            }
+
+            mPrinterSelected.addFeedLine(2);
             mPrinterSelected.addCut(Printer.CUT_FEED);
         }
         catch (Exception e) {
             mPrinterSelected.clearCommandBuffer();
             e.printStackTrace();
+            Toast.makeText(reactContext, "Print transformed json failed", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -477,6 +571,21 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     }
 
     @NonNull
+    @Contract(pure = true)
+    private String numberFormat(double number){
+        DecimalFormat df = new DecimalFormat("0.00");
+        return df.format(number);
+    }
+
+    private String getCurrency(@NonNull String currency){
+        if(currency.equals("ZAR"))
+            return "R";
+
+        Currency cur = Currency.getInstance(currency);
+        return cur.getSymbol();
+    }
+
+    @NonNull
     private String addSecondsToDate(String dateString, int seconds) throws ParseException {
         String result = "";
         try
@@ -497,6 +606,91 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
 
         return result;
+    }
+
+    private String padLine(@Nullable String partOne, @Nullable String partTwo){
+        if(partOne == null) {partOne = "";}
+        if(partTwo == null) {partTwo = "";}
+        String concat;
+        if((partOne.length() + partTwo.length()) > columnWidth) {
+            concat = partOne + " " + partTwo;
+        } else {
+            int padding = columnWidth - (partOne.length() + partTwo.length());
+            concat = partOne + repeat(" ", padding) + partTwo;
+        }
+        return concat;
+    }
+
+    private void formatModSelections(int quantity, String name, boolean includeCost, String currencySymbol, String costFormatted, int itemQuantity, boolean enableItemQuantity) throws Epos2Exception {
+        double cost = includeCost ? Double.parseDouble(costFormatted) : 0.0;
+
+        String prefix = "";
+        if(Pattern.matches("'/^(Add|Extra)(.*)$/i'", name) || cost > 0){
+            prefix = "+ ";
+        }
+        if(Pattern.matches("'/^(Remove|No)(.*)$/i'", name)){
+            prefix = "- ";
+        }
+        String left, right = "";
+        if(includeCost){
+            if(!enableItemQuantity){
+                if(cost > 0){
+                    if(quantity > 1){
+                        left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}{1}", prefix, name);
+                    }
+                    right = MessageFormat.format("{0}{1}", currencySymbol, costFormatted);
+                    mPrinterSelected.addText(padLine(left, right) + "\n");
+                }
+                else{
+                    if(quantity > 1){
+                        left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}{1}", prefix, name);
+                    }
+                    mPrinterSelected.addText(left + "\n");
+                }
+            }
+            else{
+                if(cost > 0){
+                    if(quantity > 0){
+                        left = MessageFormat.format("{0}({1}) {2}{3}", prefix, itemQuantity, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}({1}) {2}", prefix, itemQuantity, name);
+                    }
+                    right = MessageFormat.format("{0}{1}", currencySymbol, costFormatted);
+                    mPrinterSelected.addText(padLine(left, right) + "\n");
+                }
+                else{
+                    if(quantity > 0){
+                        left = MessageFormat.format("{0}({1}) {2}{3}", prefix, itemQuantity, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}({1}) {2}", prefix, itemQuantity, name);
+                    }
+                    mPrinterSelected.addText(left + "\n");
+                }
+            }
+        }
+        else{
+            if(quantity > 1){
+                left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
+            }
+            else{
+                left = MessageFormat.format("{0}{1}", prefix, name);
+            }
+            mPrinterSelected.addText(left + "\n");
+        }
+    }
+
+
+    /** utility: string repeat */
+    protected String repeat(String str, int i){
+        return new String(new char[i]).replace("\0", str);
     }
 
     private void printReceipt() {
@@ -540,21 +734,42 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 }
 
 class PrinterUtils {
-    public static void addBold(Printer mPrinterSelected){
+    public static void addBold(@NonNull Printer mPrinterSelected){
         try {
             mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.TRUE, Printer.FALSE);
         } catch (Epos2Exception e) {
             e.printStackTrace();
         }
     }
-    public static void alignLeft(Printer mPrinterSelected){
+    public static void removeStyles(@NonNull Printer mPrinterSelected){
+        try {
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+        } catch (Epos2Exception e) {
+            e.printStackTrace();
+        }
+    }
+    public static void addUnderLine(@NonNull Printer mPrinterSelected){
+        try {
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.TRUE, Printer.FALSE, Printer.FALSE);
+        } catch (Epos2Exception e) {
+            e.printStackTrace();
+        }
+    }
+    public static void addUnderLineAndBold(@NonNull Printer mPrinterSelected){
+        try {
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.TRUE, Printer.TRUE, Printer.FALSE);
+        } catch (Epos2Exception e) {
+            e.printStackTrace();
+        }
+    }
+    public static void alignLeft(@NonNull Printer mPrinterSelected){
         try {
             mPrinterSelected.addTextAlign(Printer.ALIGN_LEFT);
         } catch (Epos2Exception e) {
             e.printStackTrace();
         }
     }
-    public static void alignCenter(Printer mPrinterSelected){
+    public static void alignCenter(@NonNull Printer mPrinterSelected){
         try {
             mPrinterSelected.addTextAlign(Printer.ALIGN_CENTER);
         } catch (Epos2Exception e) {
