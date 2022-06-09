@@ -3,16 +3,17 @@ import { ScrollView, StatusBar, StyleSheet, Text, useColorScheme, View, Button, 
 
 import { Colors } from 'react-native/Libraries/NewAppScreen';
 import { SubmitMACs } from './src/components/Services';
-import InputText from './src/components/Input';
-import EpsonNative, { TransferDataToSDK, StartDiscovery } from './src/components/EpsonNative';
+import { TransferDataToSDK, StartDiscovery } from './src/components/EpsonNative';
 import Printers from './src/components/Printers';
 import { Section } from './src/components/Section';
-import PrintersContext, { PrintersContexProvider } from './src/context/Printer-context';
+import { TextInput } from 'react-native-paper';
+import { PrintersContexProvider } from './src/context/Printer-context';
 import { useTimer } from './src/hooks/Timer'
+import { CONSTANTS } from './src/context/constants';
 
 const App = () => {
   const isDarkMode = useColorScheme() === 'dark';
-  const [periodicity, setPeriodicity] = useState("30");
+  const [periodicity, setPeriodicity] = useState(CONSTANTS.DEFAULT_TIMER_VALUE);
   const [isDiscoverEnabled , setIsDiscoverEnabled] = useState(false);
 
   const [printer , setPrinter] = useState(null);
@@ -25,11 +26,12 @@ const App = () => {
   }, []);
 
   const fetchToFindPrintings = async () => {
-    const data = await SubmitMACs();
-    if(data.data)
-      await TransferDataToSDK(JSON.stringify(data), data.id_ticket_queue);
-    else
-      console.log("Nothing to print")
+    if(!printer)
+      return;
+
+    const data = await SubmitMACs(printer.Target);
+    if(data.queue)
+      await TransferDataToSDK(JSON.stringify(data), data.id_ticket_queue, printer.Target, printer.DeviceName);
   };
 
   const restartDiscovery = () => {
@@ -42,7 +44,17 @@ const App = () => {
     });
   }
 
-  //useTimer(parseInt(periodicity), fetchToFindPrintings);
+  const [timer, setTimer] = useTimer(parseInt(periodicity), fetchToFindPrintings);
+
+  const handlePeriodicity = () => {
+    let newSecondsValue = parseInt(periodicity);
+    if(isNaN(newSecondsValue) || newSecondsValue <= 0){
+      setPeriodicity(CONSTANTS.DEFAULT_TIMER_VALUE);
+      newSecondsValue = parseInt(CONSTANTS.DEFAULT_TIMER_VALUE);
+    }  
+    
+    setTimer(newSecondsValue)
+  }
 
   return (
     <PrintersContexProvider>
@@ -50,18 +62,28 @@ const App = () => {
         <StatusBar barStyle={isDarkMode ? Colors.darker : Colors.lighter} />
         <ScrollView
           style={{ backgroundColor: isDarkMode ? '#000' : Colors.lighter, width: '100%' }} contentContainerStyle={styles.container}>
-          <Section title="Step One">
+          <Section title="Step One" centered={false}>
             Edit <Text style={styles.highlight}>the Timer</Text> to change the
             requests periodicity to search for new printings
           </Section>
-          <InputText value={periodicity.toString()} setPeriodicity={setPeriodicity}/>
+          <TextInput
+            style={styles.inputContainerStyle}
+            label="Timer"
+            value={periodicity}
+            placeholder="Set the timer value measured in seconds"
+            keyboardType='numeric'
+            onBlur={handlePeriodicity}
+            onChangeText={text => setPeriodicity(text)}
+          />
+          <Section title="Printers" centered={true}>
+          </Section>
           <Printers list={printer} />
           <View style={styles.button}>
             <Button title="Search printers" onPress={restartDiscovery} disabled={isDiscoverEnabled} />
           </View>
-          <View style={styles.button}>
+          {/* <View style={styles.button}>
             <Button title="Search new printings" onPress={fetchToFindPrintings} disabled={!printer} />
-          </View>
+          </View> */}
         </ScrollView>
       </View>
     </PrintersContexProvider>
@@ -82,6 +104,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     paddingVertical: 5,
   },
+  inputContainerStyle: {
+    marginTop: 8,
+    marginHorizontal: 24
+}
 });
 
 export default () => {

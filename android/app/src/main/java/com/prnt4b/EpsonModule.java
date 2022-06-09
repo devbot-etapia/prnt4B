@@ -57,35 +57,47 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    public boolean rnReceiveData(String jsonPayload) {
+    public String rnReceiveData(String jsonPayload, String target, String printer) {
         try {
             if(jsonPayload == null){
-                return false;
+                return "3";
             }
 
             JSONObject jsonObject = new JSONObject(jsonPayload);
             String locationType = jsonObject.getJSONObject("data").getString("locationType");
-            String mac = jsonObject.getString("mac");
+            boolean isGhostkitchen = jsonObject.getString("is_ghostkitchen").equals("1");
             JSONObject data = jsonObject.getJSONObject("data");
 
-            mPrinterSelected = findPrinter();
+            mPrinterSelected = findPrinter(printer);
+            if(mPrinterSelected == null){
+                return "2";
+            }
 
             if(locationType.equals("Restaurant")){
                 createRestaurantReceipt(data);
             }
             else if (locationType.equals("Ghost Kitchen")){
-                createGhostKitchenReceipt(data);
+                if(isGhostkitchen){
+                    createGhostKitchenReceipt(data);
+                }
+                else{
+                    int idRestaurant = (!jsonObject.getString("id_restaurant").equals("") && !jsonObject.getString("id_restaurant").equals("null")) ? Integer.parseInt(jsonObject.getString("id_restaurant")) : 0;
+                    createRestaurantInGhostKitchenReceipt(data, idRestaurant);
+                }
             }
             //createTestReceipt("MICROSERVICE");
 
-            connectToPrinter();
+            boolean connectionResult = connectToPrinter(target);
+            if(!connectionResult){
+                return "2";
+            }
+
             printReceipt();
             disconnectToPrinter();
-            return true;
         } catch (JSONException e) {
             e.printStackTrace();
         }
-        return false;
+        return "1";
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
@@ -111,7 +123,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             //}
             //Set<BluetoothDevice> pairedDevices = adapter.getBondedDevices();
 
-            mPrinterSelected = findPrinter();
+            mPrinterSelected = findPrinter("TM_m10_008721");
             if (mPrinterSelected != null) {
                 mPrinterSelected.connect("BT:00:01:90:76:E1:67", 300000);
                 createTestReceipt("BLUETOOTH");
@@ -129,7 +141,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     public void rnUSB() {
         Toast.makeText(reactContext, "testUSB: initial", Toast.LENGTH_SHORT).show();
         try {
-            Printer mPrinterSelected = findPrinter();
+            Printer mPrinterSelected = findPrinter("TM_m10_008721");
             if (mPrinterSelected != null) {
                 mPrinterSelected.connect("USB:", 300000);
                 createTestReceipt("USB");
@@ -209,9 +221,13 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     }
 
     @Nullable
-    private Printer findPrinter (){
+    private Printer findPrinter (String printerName){
         // Converts the printer name into PrinterSeries
-        int printerSeries = convertPrinterNameToPrinterSeries("TM_m10_008721");
+        int printerSeries = convertPrinterNameToPrinterSeries(printerName);
+        if(printerSeries == -1){
+            return null;
+        }
+
         try {
             //return new Printer(Printer.TM_M10, Printer.MODEL_ANK, reactContext);
             return new Printer(printerSeries, Printer.MODEL_ANK, reactContext);
@@ -222,7 +238,8 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     }
 
     private int convertPrinterNameToPrinterSeries(@NonNull String printerName) {
-        int printerSeries = Printer.TM_T88;
+        int printerSeries = -1;
+
         if(printerName.contains("TM-T88V")){
             printerSeries = Printer.TM_T88;
         }else if(printerName.contains("TM-m10")){
@@ -398,6 +415,111 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
             ReceiptUtils.AddLine(mPrinterSelected, '—');
             ReceiptUtils.AddTotals(mPrinterSelected, order, currency);
+
+            mPrinterSelected.addFeedLine(2);
+            mPrinterSelected.addCut(Printer.CUT_FEED);
+        }
+        catch (Exception e) {
+            mPrinterSelected.clearCommandBuffer();
+            e.printStackTrace();
+            Toast.makeText(reactContext, "Print transformed ghost kitchen failed", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void createRestaurantInGhostKitchenReceipt(JSONObject order, int idRestaurant) throws JSONException {
+        if (mPrinterSelected == null) {
+            return;
+        }
+
+        JSONArray restaurants = order.getJSONArray("restaurants");
+        int total = restaurants.length();
+        int index = 0;
+        for (int r = 0; r < restaurants.length(); r++){
+            JSONObject restaurant = restaurants.getJSONObject(r);
+            int restaurantID = restaurant.getInt("id");
+            if(restaurantID == idRestaurant) {
+                index = r;
+            }
+        }
+        JSONObject restaurant = restaurants.getJSONObject(index);
+        JSONObject ghostKitchen = order.getJSONObject("ghostKitchen");
+        JSONObject account = ghostKitchen.getJSONObject("account");
+
+        String orderType = order.getString("orderType");
+        String timezone = ghostKitchen.getString("timezone");
+        String currency = getCurrency(account.getString("currencyCode"));
+        boolean isExternalDelivery = order.getBoolean("isExternalDelivery");
+
+        try {
+            mPrinterSelected.addPulse(Printer.PARAM_DEFAULT, Printer.PARAM_DEFAULT);
+
+            PrinterUtils.alignCenter(mPrinterSelected);
+
+            mPrinterSelected.addTextSize(1, 2);
+
+            mPrinterSelected.addTextStyle(Printer.TRUE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+            mPrinterSelected.addText(" Ghost Kitchen Order \n");
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
+
+            mPrinterSelected.addTextSize(2, 2);
+
+            mPrinterSelected.addText(restaurant.getString("name") + "\n");
+
+            mPrinterSelected.addTextSize(1, 1);
+
+            mPrinterSelected.addText("Order " + order.getString("id") + "\n");
+
+            mPrinterSelected.addText("Ticket " + (index + 1) + " of " + total + "\n");
+
+            mPrinterSelected.addText(orderType.toUpperCase() + "\n");
+
+            if(orderType.equals("delivery")){
+                PrinterUtils.addBold(mPrinterSelected);
+                String delivery = isExternalDelivery ? "External" : "Internal";
+                mPrinterSelected.addText(delivery + " Delivery" + "\n");
+                PrinterUtils.removeStyles(mPrinterSelected);
+            }
+            String created_at = convertDate(order.getString("created_at"), timezone);
+            mPrinterSelected.addText("Placed: " + created_at + "\n");
+
+            String scheduledAt = order.getString("scheduledAt");
+            if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
+                mPrinterSelected.addTextSmooth(Printer.FALSE);
+                mPrinterSelected.addTextSize(2, 2);
+                mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt, timezone) + "\n");
+                mPrinterSelected.addTextSize(1, 1);
+                mPrinterSelected.addTextSmooth(Printer.TRUE);
+            }
+
+            if(orderType.equals("pickup")){
+                int pickupEstimatedDuration = (order.getString("pickupEstimatedDuration").equals("null") || order.getString("pickupEstimatedDuration").equals("")) ? 0 : order.getInt("pickupEstimatedDuration");
+                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, pickupEstimatedDuration);
+                mPrinterSelected.addText("Pickup By: " + deliveryEstimatedDurationDate + "\n");
+            }
+            else if (orderType.equals("delivery")){
+                int deliveryEstimatedDuration = (order.getString("deliveryEstimatedDuration").equals("null") || order.getString("deliveryEstimatedDuration").equals("")) ? 0 : order.getInt("deliveryEstimatedDuration");
+                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, deliveryEstimatedDuration);
+
+                mPrinterSelected.addText("Deliver By: " + deliveryEstimatedDurationDate + "\n");
+                String deliveryInstructions = order.getString("deliveryInstructions");
+                PrinterUtils.addUnderLine(mPrinterSelected);
+                mPrinterSelected.addText("Delivery Instructions \n");
+                PrinterUtils.removeStyles(mPrinterSelected);
+                mPrinterSelected.addText(deliveryInstructions + "\n");
+            }
+
+            PrinterUtils.alignLeft(mPrinterSelected);
+            PrinterUtils.addBold(mPrinterSelected);
+            mPrinterSelected.addText("Order Details \n");
+            PrinterUtils.removeStyles(mPrinterSelected);
+
+            for (int r = 0; r < restaurants.length(); r++){
+                String restaurantName = restaurant.getString("name");
+                mPrinterSelected.addText(restaurantName + "\n");
+
+                int restaurantId = Integer.parseInt(restaurant.getString("id"));
+                ReceiptUtils.AddItems(mPrinterSelected, order, restaurantId, true, currency);
+            }
 
             mPrinterSelected.addFeedLine(2);
             mPrinterSelected.addCut(Printer.CUT_FEED);
@@ -666,14 +788,17 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
     }
 
-    private void connectToPrinter(){
+    private boolean connectToPrinter(String target){
+        boolean connectionResult = false;
         if (mPrinterSelected != null) {
             try {
-                mPrinterSelected.connect("BT:00:01:90:76:E1:67", 300000);
+                mPrinterSelected.connect(target, 300000);
+                connectionResult = true;
             } catch (Epos2Exception e) {
                 e.printStackTrace();
             }
         }
+        return connectionResult;
     }
 
     private void disconnectToPrinter(){

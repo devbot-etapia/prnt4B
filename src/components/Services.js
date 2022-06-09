@@ -35,8 +35,9 @@ export const AppPermissions = () => {
   });
 };
 
-export const SubmitMACs = async () => {
-  console.log('JSON request init');
+export const SubmitMACs = async (target) => {
+  console.info('JSON request init, target: ', target);
+  
   try {
     const response = await fetch(
       'http://192.168.1.76:8000/api/cloudprnt/getbymac',
@@ -46,11 +47,7 @@ export const SubmitMACs = async () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          devices: [
-            '00:11:62:1e:93:d9',
-            '00:11:62:1e:93:d8',
-            '00:11:62:1e:93:d4',
-          ],
+          devices: [target],
         }),
       },
     );

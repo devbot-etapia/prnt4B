@@ -18,7 +18,7 @@ const styles = StyleSheet.create({
     }
 });
 
-export const Section = ({ children, title }) => {
+export const Section = ({ children, title, centered = false }) => {
     const isDarkMode = useColorScheme() === 'dark';
     return (
       <View style={styles.sectionContainer}>
@@ -27,11 +27,12 @@ export const Section = ({ children, title }) => {
             styles.sectionTitle,
             {
               color: isDarkMode ? Colors.white : Colors.black,
+              textAlign: centered ? 'center' : 'left'
             },
           ]}>
           {title}
         </Text>
-        <Text
+        {children && <Text
           style={[
             styles.sectionDescription,
             {
@@ -39,7 +40,7 @@ export const Section = ({ children, title }) => {
             },
           ]}>
           {children}
-        </Text>
+        </Text>}
       </View>
     );
 }

@@ -6,7 +6,7 @@ function InputText(props) {
     const [timer, setTimer] = useState(props.value)
 
     const setNewTime = () => {
-        props.setPeriodicity(timer);
+        props.onUpdate(timer);
     }
 
     return (
