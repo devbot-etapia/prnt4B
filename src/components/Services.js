@@ -36,7 +36,7 @@ export const AppPermissions = () => {
 };
 
 export const SubmitMACs = async () => {
-  console.log('json');
+  console.log('JSON request init');
   try {
     const response = await fetch(
       'http://192.168.1.76:8000/api/cloudprnt/getbymac',
@@ -47,8 +47,8 @@ export const SubmitMACs = async () => {
         },
         body: JSON.stringify({
           devices: [
-            '00:11:62:1e:93:d2',
-            '00:11:62:1e:93:d3',
+            '00:11:62:1e:93:d9',
+            '00:11:62:1e:93:d8',
             '00:11:62:1e:93:d4',
           ],
         }),
@@ -56,6 +56,28 @@ export const SubmitMACs = async () => {
     );
     const json = await response.json();
     return json;
+  } catch (error) {
+    console.error(error);
+  } finally {
+  }
+};
+
+export const SubmitCompletedQueue = async (id_ticket_queue) => {
+  console.log(`Ticket (${id_ticket_queue}) completed request init`);
+  try {
+    const response = await fetch(
+      'http://192.168.1.76:8000/api/cloudprnt/delete',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id_ticket_queue: id_ticket_queue
+        }),
+      },
+    );
+    console.log(`Ticket (${id_ticket_queue}) completed `)
   } catch (error) {
     console.error(error);
   } finally {

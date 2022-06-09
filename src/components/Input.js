@@ -1,17 +1,23 @@
-import React, { useState } from 'react'
+import React, {useState} from 'react'
 import { StyleSheet } from 'react-native';
-import { TextInput, HelperText, useTheme } from 'react-native-paper';
+import { TextInput } from 'react-native-paper';
 
-function InputText() {
-    const [Timer, setTimer] = useState("")
+function InputText(props) {
+    const [timer, setTimer] = useState(props.value)
+
+    const setNewTime = () => {
+        props.setPeriodicity(timer);
+    }
+
     return (
         <TextInput
             style={styles.inputContainerStyle}
             label="Timer"
-            value={Timer}
+            value={timer}
             placeholder="Set the timer value measured in seconds"
-            onChangeText={time => setTimer(time)}
             keyboardType='numeric'
+            onBlur={setNewTime}
+            onChangeText={text => setTimer(text)}
         />
     )
 }

@@ -13,9 +13,11 @@ import java.text.DecimalFormat;
 import java.text.MessageFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Currency;
 import java.util.Date;
 import java.util.Locale;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 
 import com.epson.epos2.printer.PrinterStatusInfo;
@@ -74,6 +76,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             else if (locationType.equals("Ghost Kitchen")){
                 createGhostKitchenReceipt(data);
             }
+            //createTestReceipt("MICROSERVICE");
 
             connectToPrinter();
             printReceipt();
@@ -255,11 +258,14 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
             mPrinterSelected.addTextSize(2, 2);
 
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.COLOR_2);
             mPrinterSelected.addText(printingMethod + "\n");
+            mPrinterSelected.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.FALSE);
 
             mPrinterSelected.addTextSize(1, 1);
-
-            textData.append("DEVELOPER – OMAR MARTINEZ\n");
+            String inputDateString = "2022-05-25T09:18:25.758Z";
+            String formattedDate = convertDate(inputDateString, "Africa/Johannesburg");
+            mPrinterSelected.addText("Placed: " + formattedDate + "\n");
 
             mPrinterSelected.addText(textData.toString());
             textData.delete(0, textData.length());
@@ -340,14 +346,14 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 mPrinterSelected.addText(delivery + " Delivery" + "\n");
                 PrinterUtils.removeStyles(mPrinterSelected);
             }
-            String created_at = convertDate(order.getString("created_at"));
+            String created_at = convertDate(order.getString("created_at"), timezone);
             mPrinterSelected.addText("Placed: " + created_at + "\n");
 
             String scheduledAt = order.getString("scheduledAt");
             if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
                 mPrinterSelected.addTextSmooth(Printer.FALSE);
                 mPrinterSelected.addTextSize(2, 2);
-                mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt) + "\n");
+                mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt, timezone) + "\n");
                 mPrinterSelected.addTextSize(1, 1);
                 mPrinterSelected.addTextSmooth(Printer.TRUE);
             }
@@ -439,14 +445,14 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 mPrinterSelected.addText(delivery + " Delivery" + "\n");
                 PrinterUtils.removeStyles(mPrinterSelected);
             }
-            String created_at = convertDate(order.getString("created_at"));
+            String created_at = convertDate(order.getString("created_at"), timezone);
             mPrinterSelected.addText("Placed: " + created_at + "\n");
 
             String scheduledAt = order.getString("scheduledAt");
             if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
                  mPrinterSelected.addTextSmooth(Printer.FALSE);
                  mPrinterSelected.addTextSize(2, 2);
-                 mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt) + "\n");
+                 mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt, timezone) + "\n");
                  mPrinterSelected.addTextSize(1, 1);
                  mPrinterSelected.addTextSmooth(Printer.TRUE);
              }
@@ -494,21 +500,24 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     }
 
     @NonNull
-    private String convertDate(String dateString) throws ParseException {
+    private String convertDate(String dateString, String timezone) throws ParseException {
         String result = "";
         try
         {
-            String inputDateString = "2022-05-25T09:18:25.758Z";
-
             // Input Date String Format
             @SuppressLint("SimpleDateFormat") SimpleDateFormat inputDateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
 
-            Date inputDate = inputDateFormat.parse(inputDateString);
+            Date inputDate = inputDateFormat.parse(dateString);
+            TimeZone tz1 = TimeZone.getTimeZone(timezone);
+            Calendar cal1 = Calendar.getInstance(tz1);
 
             //Required output date string Format
             SimpleDateFormat outputDateFormat = new SimpleDateFormat("dd, MMMM yyyy HH:mm", Locale.ENGLISH);
 
-            result = outputDateFormat.format(inputDate);
+            if (inputDate != null) {
+                cal1.setTime(inputDate);
+                result = outputDateFormat.format(cal1.getTime());
+            }
 
         } catch (ParseException e) {
             e.printStackTrace();

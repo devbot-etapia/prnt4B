@@ -1,11 +1,16 @@
 import React from 'react';
-import {StyleSheet, View, Button, DeviceEventEmitter} from 'react-native';
+import { StyleSheet, View, Button } from 'react-native';
+import { SubmitCompletedQueue } from './Services'
 
-import {NativeModules} from 'react-native';
+import { NativeModules } from 'react-native';
 const EpsonModule = NativeModules.EpsonModule;
 
-export const TransferDataToSDK = async (payload) => {
-  const result = await EpsonModule.rnReceiveData(payload);
+export const TransferDataToSDK = async (payload, id_ticket_queue) => {
+  console.log(`Init transfer to sdk, ticket ${id_ticket_queue}`)
+  const prntResult = await EpsonModule.rnReceiveData(payload);
+  if (prntResult == true) {
+    SubmitCompletedQueue(id_ticket_queue)
+  }
 }
 
 export const StartDiscovery = async () => {
@@ -27,38 +32,13 @@ const EpsonNative = (props) => {
     EpsonModule.rnUSB();
   };
 
-  const constantsFromEpsonNative = () => {
-    const constants = EpsonModule.getConstants();
-    console.log(constants);
-  };
-
-  const discoverFromEpsonNative = async () => {
-    const result = await EpsonModule.rnDiscover();
-    console.log(result);
-    if(result){
-      console.log('discover ok');
-    }
-    else{
-      console.log('devices not found');
-    }
-  };
-
   return (
     <View>
-      {/* <View style={styles.button}>
-        <Button title="try string" onPress={stringFromEpsonNative} />
-      </View> */}
       <View style={styles.button}>
         <Button title="try bluetooth connect" onPress={bluetoothFromEpsonNative} />
       </View>
       <View style={styles.button}>
         <Button title="try usb connect" onPress={usbFromEpsonNative} />
-      </View>
-      <View style={styles.button}>
-        <Button title="try discover" onPress={discoverFromEpsonNative} />
-      </View>
-      <View style={styles.button}>
-        <Button title="get constants" color='#C00' onPress={constantsFromEpsonNative} />
       </View>
     </View>
   );

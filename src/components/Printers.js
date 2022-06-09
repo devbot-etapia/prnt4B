@@ -1,8 +1,10 @@
 import React from 'react'
 import {Text,View} from 'react-native';  
 import { Section } from './Section';
+//import PrintersContext from './src/context/Printer-context';
 
 const Printers = (props) => {
+    //const { printers } = useContext(PrintersContext);
     let printers = <Section title='0 printers found' />
 
     if(props.list != null ){
