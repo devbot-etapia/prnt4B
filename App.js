@@ -5,7 +5,8 @@ import BtnDialog from './src/components/Dialog';
 import Printers from './src/components/Printers';
 
 import { SubmitMACs } from './src/components/Services';
-import EpsonNative, { TransferDataToSDK, StartDiscovery } from './src/components/EpsonNative';
+import EpsonNative, { TransferDataToSDK, StartDiscovery } from './src/components/Epson/EpsonNative';
+import StarIO from './src/components/StarMicronics/StarIO';
 import { Section } from './src/components/Section';
 import { PrintersContexProvider } from './src/context/Printer-context';
 import { useTimer } from './src/hooks/Timer'
@@ -96,6 +97,8 @@ const App = () => {
         <ScrollView
           style={{ backgroundColor: isDarkMode ? '#000' : Colors.lighter, width: '100%' }} 
           contentContainerStyle={styles.container}>
+            
+          <StarIO />
 
           <Section title="Welcome!" centered={false}>
             Edit the <Text style={styles.highlight}>Timer</Text> to automatically to search for new printings.
@@ -126,8 +129,6 @@ const App = () => {
             onPress={restartDiscovery} 
             color={Colors.deepPurple500} 
             disabled={isDiscoverEnabled}>Restart discovery</Button>
-
-          {<EpsonNative />}
 
           {printersSection}
 

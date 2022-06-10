@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Button } from 'react-native';
-import { SubmitCompletedQueue, SubmitInCompletedQueue } from './Services'
+import { SubmitCompletedQueue, SubmitInCompletedQueue } from '../Services'
 
 import { NativeModules } from 'react-native';
 const EpsonModule = NativeModules.EpsonModule;
