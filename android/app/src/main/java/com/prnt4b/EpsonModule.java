@@ -16,10 +16,12 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Currency;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
 
+import com.epson.epos2.Epos2CallbackCode;
 import com.epson.epos2.printer.PrinterStatusInfo;
 import com.epson.epos2.printer.ReceiveListener;
 import com.facebook.react.bridge.Arguments;
@@ -53,7 +55,29 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     }
 
     @Override
-    public void onPtrReceive(Printer printer, int i, PrinterStatusInfo printerStatusInfo, String s) {
+    public void onPtrReceive(final Printer printerObj, final int code, final PrinterStatusInfo status, final String printJobId) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public synchronized void run() {
+                String message = "";
+                if (code == Epos2CallbackCode.CODE_SUCCESS) {
+                    message = "Successful printing";
+                }
+                else {
+                    message = PrinterUtils.getErrorMessage(status);
+                }
+
+                String codeF = String.valueOf(code);
+                SendReceiptEvent(codeF, message);
+
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        disconnectToPrinter();
+                    }
+                }).start();
+            }
+        });
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
@@ -123,7 +147,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             //}
             //Set<BluetoothDevice> pairedDevices = adapter.getBondedDevices();
 
-            mPrinterSelected = findPrinter("TM_m10_008721");
+            mPrinterSelected = findPrinter("TM-m10");
             if (mPrinterSelected != null) {
                 mPrinterSelected.connect("BT:00:01:90:76:E1:67", 300000);
                 createTestReceipt("BLUETOOTH");
@@ -141,7 +165,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     public void rnUSB() {
         Toast.makeText(reactContext, "testUSB: initial", Toast.LENGTH_SHORT).show();
         try {
-            Printer mPrinterSelected = findPrinter("TM_m10_008721");
+            Printer mPrinterSelected = findPrinter("TM-m10");
             if (mPrinterSelected != null) {
                 mPrinterSelected.connect("USB:", 300000);
                 createTestReceipt("USB");
@@ -178,7 +202,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
     }
 
-    public void SendPrintersEvent(String EventName, String DeviceName, String MACAddress, String Target, String BDAddress, String IpAddress){
+    public void SendPrintersEvent(String DeviceName, String MACAddress, String Target, String BDAddress, String IpAddress){
         WritableMap params = Arguments.createMap();
         params.putString("DeviceName", DeviceName);
         params.putString("MACAddress", MACAddress);
@@ -190,7 +214,20 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             mEmitter = getReactApplicationContext().getJSModule((DeviceEventManagerModule.RCTDeviceEventEmitter.class));
         }
         if(mEmitter != null){
-            mEmitter.emit(EventName, params);
+            mEmitter.emit("printers", params);
+        }
+    }
+
+    public void SendReceiptEvent(String code, String message){
+        WritableMap params = Arguments.createMap();
+        params.putString("code", code);
+        params.putString("message", message);
+
+        if(mEmitter == null){
+            mEmitter = getReactApplicationContext().getJSModule((DeviceEventManagerModule.RCTDeviceEventEmitter.class));
+        }
+        if(mEmitter != null){
+            mEmitter.emit("receipts", params);
         }
     }
 
@@ -207,7 +244,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
             String BDAddress = deviceInfo.getBdAddress();
             String IpAddress = deviceInfo.getIpAddress();
 
-            SendPrintersEvent("printers", DeviceName, MACAddress, Target, BDAddress, IpAddress);
+            SendPrintersEvent(DeviceName, MACAddress, Target, BDAddress, IpAddress);
         }
     });
 
@@ -218,45 +255,6 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         catch (Epos2Exception e) {
             e.printStackTrace();
         }
-    }
-
-    @Nullable
-    private Printer findPrinter (String printerName){
-        // Converts the printer name into PrinterSeries
-        int printerSeries = convertPrinterNameToPrinterSeries(printerName);
-        if(printerSeries == -1){
-            return null;
-        }
-
-        try {
-            //return new Printer(Printer.TM_M10, Printer.MODEL_ANK, reactContext);
-            return new Printer(printerSeries, Printer.MODEL_ANK, reactContext);
-        } catch (Epos2Exception e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    private int convertPrinterNameToPrinterSeries(@NonNull String printerName) {
-        int printerSeries = -1;
-
-        if(printerName.contains("TM-T88V")){
-            printerSeries = Printer.TM_T88;
-        }else if(printerName.contains("TM-m10")){
-            printerSeries = Printer.TM_M10;
-        }else if(printerName.contains("TM-m30")){
-            printerSeries = Printer.TM_M30;
-        }else if(printerName.contains("TM-P20")){
-            printerSeries = Printer.TM_P20;
-        }else if(printerName.contains("TM-P60II")){
-            printerSeries = Printer.TM_P60II;
-        }else if(printerName.contains("TM-P80")){
-            printerSeries = Printer.TM_P80;
-        }
-        // else{
-        // Depending on the printer, add conversion processes
-        // }
-        return printerSeries;
     }
 
     private void createTestReceipt(String printingMethod) {
@@ -281,7 +279,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
             mPrinterSelected.addTextSize(1, 1);
             String inputDateString = "2022-05-25T09:18:25.758Z";
-            String formattedDate = convertDate(inputDateString, "Africa/Johannesburg");
+            String formattedDate = ReceiptUtils.convertDate(inputDateString, "Africa/Johannesburg");
             mPrinterSelected.addText("Placed: " + formattedDate + "\n");
 
             mPrinterSelected.addText(textData.toString());
@@ -289,7 +287,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
             textData.append("400 MOUSEGAMER         30.00 R\n");
             textData.append("410 HDMI CABLE          9.00 R\n");
-            textData.append("------------------------------\n");
+            mPrinterSelected.addHLine(Printer.SETTING_PRINTDENSITY_100, Printer.SETTING_PRINTDENSITY_95, Printer.LINE_MEDIUM);
 
             mPrinterSelected.addText(textData.toString());
             textData.delete(0, textData.length());
@@ -333,7 +331,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
         String orderType = order.getString("orderType");
         String timezone = ghostKitchen.getString("timezone");
-        String currency = getCurrency(account.getString("currencyCode"));
+        String currency = ReceiptUtils.getCurrency(account.getString("currencyCode"));
         boolean isExternalDelivery = order.getBoolean("isExternalDelivery");
 
         try {
@@ -363,26 +361,26 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 mPrinterSelected.addText(delivery + " Delivery" + "\n");
                 PrinterUtils.removeStyles(mPrinterSelected);
             }
-            String created_at = convertDate(order.getString("created_at"), timezone);
+            String created_at = ReceiptUtils.convertDate(order.getString("created_at"), timezone);
             mPrinterSelected.addText("Placed: " + created_at + "\n");
 
             String scheduledAt = order.getString("scheduledAt");
             if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
                 mPrinterSelected.addTextSmooth(Printer.FALSE);
                 mPrinterSelected.addTextSize(2, 2);
-                mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt, timezone) + "\n");
+                mPrinterSelected.addText("Scheduled Order " + ReceiptUtils.convertDate(scheduledAt, timezone) + "\n");
                 mPrinterSelected.addTextSize(1, 1);
                 mPrinterSelected.addTextSmooth(Printer.TRUE);
             }
 
             if(orderType.equals("pickup")){
                 int pickupEstimatedDuration = (order.getString("pickupEstimatedDuration").equals("null") || order.getString("pickupEstimatedDuration").equals("")) ? 0 : order.getInt("pickupEstimatedDuration");
-                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, pickupEstimatedDuration);
+                String deliveryEstimatedDurationDate = ReceiptUtils.addSecondsToDate(created_at, pickupEstimatedDuration);
                 mPrinterSelected.addText("Pickup By: " + deliveryEstimatedDurationDate + "\n");
             }
             else if (orderType.equals("delivery")){
                 int deliveryEstimatedDuration = (order.getString("deliveryEstimatedDuration").equals("null") || order.getString("deliveryEstimatedDuration").equals("")) ? 0 : order.getInt("deliveryEstimatedDuration");
-                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, deliveryEstimatedDuration);
+                String deliveryEstimatedDurationDate = ReceiptUtils.addSecondsToDate(created_at, deliveryEstimatedDuration);
 
                 mPrinterSelected.addText("Deliver By: " + deliveryEstimatedDurationDate + "\n");
                 String deliveryInstructions = order.getString("deliveryInstructions");
@@ -447,7 +445,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
         String orderType = order.getString("orderType");
         String timezone = ghostKitchen.getString("timezone");
-        String currency = getCurrency(account.getString("currencyCode"));
+        String currency = ReceiptUtils.getCurrency(account.getString("currencyCode"));
         boolean isExternalDelivery = order.getBoolean("isExternalDelivery");
 
         try {
@@ -479,26 +477,26 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 mPrinterSelected.addText(delivery + " Delivery" + "\n");
                 PrinterUtils.removeStyles(mPrinterSelected);
             }
-            String created_at = convertDate(order.getString("created_at"), timezone);
+            String created_at = ReceiptUtils.convertDate(order.getString("created_at"), timezone);
             mPrinterSelected.addText("Placed: " + created_at + "\n");
 
             String scheduledAt = order.getString("scheduledAt");
             if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
                 mPrinterSelected.addTextSmooth(Printer.FALSE);
                 mPrinterSelected.addTextSize(2, 2);
-                mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt, timezone) + "\n");
+                mPrinterSelected.addText("Scheduled Order " + ReceiptUtils.convertDate(scheduledAt, timezone) + "\n");
                 mPrinterSelected.addTextSize(1, 1);
                 mPrinterSelected.addTextSmooth(Printer.TRUE);
             }
 
             if(orderType.equals("pickup")){
                 int pickupEstimatedDuration = (order.getString("pickupEstimatedDuration").equals("null") || order.getString("pickupEstimatedDuration").equals("")) ? 0 : order.getInt("pickupEstimatedDuration");
-                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, pickupEstimatedDuration);
+                String deliveryEstimatedDurationDate = ReceiptUtils.addSecondsToDate(created_at, pickupEstimatedDuration);
                 mPrinterSelected.addText("Pickup By: " + deliveryEstimatedDurationDate + "\n");
             }
             else if (orderType.equals("delivery")){
                 int deliveryEstimatedDuration = (order.getString("deliveryEstimatedDuration").equals("null") || order.getString("deliveryEstimatedDuration").equals("")) ? 0 : order.getInt("deliveryEstimatedDuration");
-                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, deliveryEstimatedDuration);
+                String deliveryEstimatedDurationDate = ReceiptUtils.addSecondsToDate(created_at, deliveryEstimatedDuration);
 
                 mPrinterSelected.addText("Deliver By: " + deliveryEstimatedDurationDate + "\n");
                 String deliveryInstructions = order.getString("deliveryInstructions");
@@ -543,7 +541,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
 
         String orderType = order.getString("orderType");
         String timezone = firstRestaurant.getString("timezone");
-        String currency = getCurrency(account.getString("currencyCode"));
+        String currency = ReceiptUtils.getCurrency(account.getString("currencyCode"));
         boolean isExternalDelivery = order.getBoolean("isExternalDelivery");
 
         try {
@@ -567,26 +565,26 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
                 mPrinterSelected.addText(delivery + " Delivery" + "\n");
                 PrinterUtils.removeStyles(mPrinterSelected);
             }
-            String created_at = convertDate(order.getString("created_at"), timezone);
+            String created_at = ReceiptUtils.convertDate(order.getString("created_at"), timezone);
             mPrinterSelected.addText("Placed: " + created_at + "\n");
 
             String scheduledAt = order.getString("scheduledAt");
             if(!scheduledAt.equals("") && !scheduledAt.equals("null")){
                  mPrinterSelected.addTextSmooth(Printer.FALSE);
                  mPrinterSelected.addTextSize(2, 2);
-                 mPrinterSelected.addText("Scheduled Order " + convertDate(scheduledAt, timezone) + "\n");
+                 mPrinterSelected.addText("Scheduled Order " + ReceiptUtils.convertDate(scheduledAt, timezone) + "\n");
                  mPrinterSelected.addTextSize(1, 1);
                  mPrinterSelected.addTextSmooth(Printer.TRUE);
              }
 
             if(orderType.equals("pickup")){
                 int pickupEstimatedDuration = (order.getString("pickupEstimatedDuration").equals("null") || order.getString("pickupEstimatedDuration").equals("")) ? 0 : order.getInt("pickupEstimatedDuration");
-                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, pickupEstimatedDuration);
+                String deliveryEstimatedDurationDate = ReceiptUtils.addSecondsToDate(created_at, pickupEstimatedDuration);
                 mPrinterSelected.addText("Pickup By: " + deliveryEstimatedDurationDate + "\n");
             }
             else if (orderType.equals("delivery")){
                 int deliveryEstimatedDuration = (order.getString("deliveryEstimatedDuration").equals("null") || order.getString("deliveryEstimatedDuration").equals("")) ? 0 : order.getInt("deliveryEstimatedDuration");
-                String deliveryEstimatedDurationDate = addSecondsToDate(created_at, deliveryEstimatedDuration);
+                String deliveryEstimatedDurationDate = ReceiptUtils.addSecondsToDate(created_at, deliveryEstimatedDuration);
 
                 mPrinterSelected.addText("Deliver By: " + deliveryEstimatedDurationDate + "\n");
                 String deliveryInstructions = order.getString("deliveryInstructions");
@@ -621,154 +619,6 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
     }
 
-    @NonNull
-    private String convertDate(String dateString, String timezone) throws ParseException {
-        String result = "";
-        try
-        {
-            // Input Date String Format
-            @SuppressLint("SimpleDateFormat") SimpleDateFormat inputDateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-
-            Date inputDate = inputDateFormat.parse(dateString);
-            TimeZone tz1 = TimeZone.getTimeZone(timezone);
-            Calendar cal1 = Calendar.getInstance(tz1);
-
-            //Required output date string Format
-            SimpleDateFormat outputDateFormat = new SimpleDateFormat("dd, MMMM yyyy HH:mm", Locale.ENGLISH);
-
-            if (inputDate != null) {
-                cal1.setTime(inputDate);
-                result = outputDateFormat.format(cal1.getTime());
-            }
-
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-
-        return result;
-    }
-
-    @NonNull
-    @Contract(pure = true)
-    public static String numberFormat(double number){
-        DecimalFormat df = new DecimalFormat("0.00");
-        return df.format(number);
-    }
-
-    private String getCurrency(@NonNull String currency){
-        if(currency.equals("ZAR"))
-            return "R";
-
-        Currency cur = Currency.getInstance(currency);
-        return cur.getSymbol();
-    }
-
-    @NonNull
-    private String addSecondsToDate(String dateString, int seconds) throws ParseException {
-        String result = "";
-        try
-        {
-            @SuppressLint("SimpleDateFormat") Date inputDate= new SimpleDateFormat("dd, MMMM yyyy HH:mm").parse(dateString);
-
-            if (inputDate != null) {
-                long allSeconds = inputDate.getTime();
-                allSeconds = allSeconds + (seconds * 1000L);
-                inputDate = new Date(allSeconds);
-            }
-            SimpleDateFormat outputDateFormat = new SimpleDateFormat("dd, MMMM yyyy HH:mm", Locale.ENGLISH);
-            if (inputDate != null) {
-                result = outputDateFormat.format(inputDate);
-            }
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-
-        return result;
-    }
-
-    public static String padLine(@Nullable String partOne, @Nullable String partTwo){
-        if(partOne == null) {partOne = "";}
-        if(partTwo == null) {partTwo = "";}
-        String concat;
-        if((partOne.length() + partTwo.length()) > columnWidth) {
-            concat = partOne + " " + partTwo;
-        } else {
-            int padding = columnWidth - (partOne.length() + partTwo.length());
-            concat = partOne + repeat(" ", padding) + partTwo;
-        }
-        return concat;
-    }
-
-    public static void formatModSelections(int quantity, String name, boolean includeCost, String currencySymbol, String costFormatted, int itemQuantity, boolean enableItemQuantity) throws Epos2Exception {
-        double cost = includeCost ? Double.parseDouble(costFormatted) : 0.0;
-
-        String prefix = "";
-        if(Pattern.matches("'/^(Add|Extra)(.*)$/i'", name) || cost > 0){
-            prefix = "+ ";
-        }
-        if(Pattern.matches("'/^(Remove|No)(.*)$/i'", name)){
-            prefix = "- ";
-        }
-        String left, right = "";
-        if(includeCost){
-            if(!enableItemQuantity){
-                if(cost > 0){
-                    if(quantity > 1){
-                        left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
-                    }
-                    else{
-                        left = MessageFormat.format("{0}{1}", prefix, name);
-                    }
-                    right = MessageFormat.format("{0}{1}", currencySymbol, costFormatted);
-                    mPrinterSelected.addText(padLine(left, right) + "\n");
-                }
-                else{
-                    if(quantity > 1){
-                        left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
-                    }
-                    else{
-                        left = MessageFormat.format("{0}{1}", prefix, name);
-                    }
-                    mPrinterSelected.addText(left + "\n");
-                }
-            }
-            else{
-                if(cost > 0){
-                    if(quantity > 0){
-                        left = MessageFormat.format("{0}({1}) {2}{3}", prefix, itemQuantity, quantity, name);
-                    }
-                    else{
-                        left = MessageFormat.format("{0}({1}) {2}", prefix, itemQuantity, name);
-                    }
-                    right = MessageFormat.format("{0}{1}", currencySymbol, costFormatted);
-                    mPrinterSelected.addText(padLine(left, right) + "\n");
-                }
-                else{
-                    if(quantity > 0){
-                        left = MessageFormat.format("{0}({1}) {2}{3}", prefix, itemQuantity, quantity, name);
-                    }
-                    else{
-                        left = MessageFormat.format("{0}({1}) {2}", prefix, itemQuantity, name);
-                    }
-                    mPrinterSelected.addText(left + "\n");
-                }
-            }
-        }
-        else{
-            if(quantity > 1){
-                left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
-            }
-            else{
-                left = MessageFormat.format("{0}{1}", prefix, name);
-            }
-            mPrinterSelected.addText(left + "\n");
-        }
-    }
-
-    protected static String repeat(String str, int i){
-        return new String(new char[i]).replace("\0", str);
-    }
-
     private void printReceipt() {
         if (mPrinterSelected == null) {
             return;
@@ -779,12 +629,6 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         }
         catch (Exception e) {
             mPrinterSelected.clearCommandBuffer();
-            try {
-                mPrinterSelected.disconnect();
-            }
-            catch (Exception ex) {
-                // Do nothing
-            }
         }
     }
 
@@ -793,6 +637,7 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
         if (mPrinterSelected != null) {
             try {
                 mPrinterSelected.connect(target, 300000);
+                mPrinterSelected.setReceiveEventListener(this);
                 connectionResult = true;
             } catch (Epos2Exception e) {
                 e.printStackTrace();
@@ -804,17 +649,36 @@ public class EpsonModule extends ReactContextBaseJavaModule implements ReceiveLi
     private void disconnectToPrinter(){
         if (mPrinterSelected != null) {
             try {
+                mPrinterSelected.setReceiveEventListener(null);
                 mPrinterSelected.disconnect();
             } catch (Epos2Exception e) {
                 e.printStackTrace();
             }
         }
     }
+
+    @Nullable
+    private Printer findPrinter (String printerName){
+        // Converts the printer name into PrinterSeries
+        int printerSeries = PrinterUtils.convertPrinterNameToPrinterSeries(printerName);
+        if(printerSeries == -1){
+            return null;
+        }
+
+        try {
+            //return new Printer(Printer.TM_M10, Printer.MODEL_ANK, reactContext);
+            return new Printer(printerSeries, Printer.MODEL_ANK, reactContext);
+        } catch (Epos2Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
 }
 
 class ReceiptUtils {
+    public static int columnWidth = 42;
     public static void AddLine(Printer mPrinterSelected, Character character) throws Epos2Exception {
-        String line = EpsonModule.repeat(character.toString(), EpsonModule.columnWidth);
+        String line = repeat(character.toString(), EpsonModule.columnWidth);
         mPrinterSelected.addText(line + "\n");
     }
 
@@ -830,11 +694,11 @@ class ReceiptUtils {
             String menuItemName = menuItem.getString("name");
             int itemQuantity = (item.getString("quantity").equals("") || item.getString("quantity").equals("null")) ? 0 : Integer.parseInt(item.getString("quantity"));
             double cost = ((menuItem.getString("cost").equals("") || menuItem.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItem.getString("cost"))) / 100 * itemQuantity;
-            String costFormatted = EpsonModule.numberFormat(cost);
+            String costFormatted = numberFormat(cost);
 
             String quantityNName = "(" + itemQuantity + ")" + menuItemName;
             String currencyNCost = currency + costFormatted;
-            mPrinterSelected.addText(EpsonModule.padLine(quantityNName, currencyNCost) + "\n");
+            mPrinterSelected.addText(padLine(quantityNName, currencyNCost) + "\n");
 
             String specialInstructions = item.getString("specialInstructions");
             if(!specialInstructions.equals("") && !specialInstructions.equals("null")){
@@ -852,10 +716,10 @@ class ReceiptUtils {
                     JSONObject selection = selections.getJSONObject(s);
                     JSONObject menuItemModifierSelection = selection.getJSONObject("menuItemModifierSelection");
                     double costSel = ((menuItemModifierSelection.getString("cost").equals("") || menuItemModifierSelection.getString("cost").equals("null")) ? 0 : Double.parseDouble(menuItemModifierSelection.getString("cost"))) / 100 * itemQuantity;
-                    String costSelFormatted = EpsonModule.numberFormat(costSel);
+                    String costSelFormatted = numberFormat(costSel);
                     int selQuantity = (selection.getString("quantity").equals("") || selection.getString("quantity").equals("null")) ? 0 : Integer.parseInt(selection.getString("quantity"));
                     String menuItemModifierSelectionName = menuItemModifierSelection.getString("name");
-                    EpsonModule.formatModSelections(selQuantity, menuItemModifierSelectionName, false, currency, costSelFormatted, itemQuantity, false);
+                    formatModSelections(mPrinterSelected, selQuantity, menuItemModifierSelectionName, false, currency, costSelFormatted, itemQuantity, false);
                 }
             }
 
@@ -942,28 +806,176 @@ class ReceiptUtils {
 
     public static void AddTotals(Printer mPrinterSelected, JSONObject order, String currency) throws JSONException, Epos2Exception {
         double preTaxTotal = ((order.getString("preTaxTotal").equals("") || order.getString("preTaxTotal").equals("null")) ? 0 : Double.parseDouble(order.getString("preTaxTotal"))) / 100;
-        String preTaxTotalS = currency + EpsonModule.numberFormat(preTaxTotal);
-        mPrinterSelected.addText(EpsonModule.padLine("Sub Total", preTaxTotalS) + "\n");
+        String preTaxTotalS = currency + numberFormat(preTaxTotal);
+        mPrinterSelected.addText(padLine("Sub Total", preTaxTotalS) + "\n");
 
         double totalTax = ((order.getString("totalTax").equals("") || order.getString("totalTax").equals("null")) ? 0 : Double.parseDouble(order.getString("totalTax"))) / 100;
-        String totalTaxS = currency + EpsonModule.numberFormat(totalTax);
-        mPrinterSelected.addText(EpsonModule.padLine("Tax", totalTaxS) + "\n");
+        String totalTaxS = currency + numberFormat(totalTax);
+        mPrinterSelected.addText(padLine("Tax", totalTaxS) + "\n");
 
         double totalTip = ((order.getString("totalTip").equals("") || order.getString("totalTip").equals("null")) ? 0 : Double.parseDouble(order.getString("totalTip"))) / 100;
-        String totalTipS = currency + EpsonModule.numberFormat(totalTip);
-        mPrinterSelected.addText(EpsonModule.padLine("Tip", totalTipS) + "\n");
+        String totalTipS = currency + numberFormat(totalTip);
+        mPrinterSelected.addText(padLine("Tip", totalTipS) + "\n");
 
         double serviceFee = ((order.getString("serviceFee").equals("") || order.getString("serviceFee").equals("null")) ? 0 : Double.parseDouble(order.getString("serviceFee"))) / 100;
-        String serviceFeeS = currency + EpsonModule.numberFormat(serviceFee);
-        mPrinterSelected.addText(EpsonModule.padLine("Service Fee", serviceFeeS) + "\n");
+        String serviceFeeS = currency + numberFormat(serviceFee);
+        mPrinterSelected.addText(padLine("Service Fee", serviceFeeS) + "\n");
 
         double deliveryFee = ((order.getString("totalDeliveryFee").equals("") || order.getString("totalDeliveryFee").equals("null")) ? 0 : Double.parseDouble(order.getString("totalDeliveryFee"))) / 100;
-        String deliveryFeeS = currency + EpsonModule.numberFormat(deliveryFee);
-        mPrinterSelected.addText(EpsonModule.padLine("Delivery Fee", deliveryFeeS) + "\n");
+        String deliveryFeeS = currency + numberFormat(deliveryFee);
+        mPrinterSelected.addText(padLine("Delivery Fee", deliveryFeeS) + "\n");
 
         double totalCharged = ((order.getString("totalCharged").equals("") || order.getString("totalCharged").equals("null")) ? 0 : Double.parseDouble(order.getString("totalCharged"))) / 100;
-        String totalChargedS = currency + EpsonModule.numberFormat(totalCharged);
-        mPrinterSelected.addText(EpsonModule.padLine("Total", totalChargedS) + "\n");
+        String totalChargedS = currency + numberFormat(totalCharged);
+        mPrinterSelected.addText(padLine("Total", totalChargedS) + "\n");
+    }
+
+    @NonNull
+    public static String convertDate(String dateString, String timezone) throws ParseException {
+        String result = "";
+        try
+        {
+            // Input Date String Format
+            @SuppressLint("SimpleDateFormat") SimpleDateFormat inputDateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+
+            Date inputDate = inputDateFormat.parse(dateString);
+            TimeZone tz1 = TimeZone.getTimeZone(timezone);
+            Calendar cal1 = Calendar.getInstance(tz1);
+
+            //Required output date string Format
+            SimpleDateFormat outputDateFormat = new SimpleDateFormat("dd, MMMM yyyy HH:mm", Locale.ENGLISH);
+
+            if (inputDate != null) {
+                cal1.setTime(inputDate);
+                result = outputDateFormat.format(cal1.getTime());
+            }
+
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+
+        return result;
+    }
+
+    public static String repeat(String str, int i){
+        return new String(new char[i]).replace("\0", str);
+    }
+
+    @NonNull
+    @Contract(pure = true)
+    public static String numberFormat(double number){
+        DecimalFormat df = new DecimalFormat("0.00");
+        return df.format(number);
+    }
+
+    public static String getCurrency(@NonNull String currency){
+        if(currency.equals("ZAR"))
+            return "R";
+
+        Currency cur = Currency.getInstance(currency);
+        return cur.getSymbol();
+    }
+
+    @NonNull
+    public static String addSecondsToDate(String dateString, int seconds) throws ParseException {
+        String result = "";
+        try
+        {
+            @SuppressLint("SimpleDateFormat") Date inputDate= new SimpleDateFormat("dd, MMMM yyyy HH:mm").parse(dateString);
+
+            if (inputDate != null) {
+                long allSeconds = inputDate.getTime();
+                allSeconds = allSeconds + (seconds * 1000L);
+                inputDate = new Date(allSeconds);
+            }
+            SimpleDateFormat outputDateFormat = new SimpleDateFormat("dd, MMMM yyyy HH:mm", Locale.ENGLISH);
+            if (inputDate != null) {
+                result = outputDateFormat.format(inputDate);
+            }
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+
+        return result;
+    }
+
+    public static String padLine(@Nullable String partOne, @Nullable String partTwo){
+        if(partOne == null) {partOne = "";}
+        if(partTwo == null) {partTwo = "";}
+        String concat;
+        if((partOne.length() + partTwo.length()) > columnWidth) {
+            concat = partOne + " " + partTwo;
+        } else {
+            int padding = columnWidth - (partOne.length() + partTwo.length());
+            concat = partOne + repeat(" ", padding) + partTwo;
+        }
+        return concat;
+    }
+
+    public static void formatModSelections(Printer mPrinterSelected, int quantity, String name, boolean includeCost, String currencySymbol, String costFormatted, int itemQuantity, boolean enableItemQuantity) throws Epos2Exception {
+        double cost = includeCost ? Double.parseDouble(costFormatted) : 0.0;
+
+        String prefix = "";
+        if(Pattern.matches("'/^(Add|Extra)(.*)$/i'", name) || cost > 0){
+            prefix = "+ ";
+        }
+        if(Pattern.matches("'/^(Remove|No)(.*)$/i'", name)){
+            prefix = "- ";
+        }
+        String left, right = "";
+        if(includeCost){
+            if(!enableItemQuantity){
+                if(cost > 0){
+                    if(quantity > 1){
+                        left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}{1}", prefix, name);
+                    }
+                    right = MessageFormat.format("{0}{1}", currencySymbol, costFormatted);
+                    mPrinterSelected.addText(padLine(left, right) + "\n");
+                }
+                else{
+                    if(quantity > 1){
+                        left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}{1}", prefix, name);
+                    }
+                    mPrinterSelected.addText(left + "\n");
+                }
+            }
+            else{
+                if(cost > 0){
+                    if(quantity > 0){
+                        left = MessageFormat.format("{0}({1}) {2}{3}", prefix, itemQuantity, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}({1}) {2}", prefix, itemQuantity, name);
+                    }
+                    right = MessageFormat.format("{0}{1}", currencySymbol, costFormatted);
+                    mPrinterSelected.addText(padLine(left, right) + "\n");
+                }
+                else{
+                    if(quantity > 0){
+                        left = MessageFormat.format("{0}({1}) {2}{3}", prefix, itemQuantity, quantity, name);
+                    }
+                    else{
+                        left = MessageFormat.format("{0}({1}) {2}", prefix, itemQuantity, name);
+                    }
+                    mPrinterSelected.addText(left + "\n");
+                }
+            }
+        }
+        else{
+            if(quantity > 1){
+                left = MessageFormat.format("{0}({1}){2}", prefix, quantity, name);
+            }
+            else{
+                left = MessageFormat.format("{0}{1}", prefix, name);
+            }
+            mPrinterSelected.addText(left + "\n");
+        }
     }
 }
 
@@ -1009,5 +1021,83 @@ class PrinterUtils {
         } catch (Epos2Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public static int convertPrinterNameToPrinterSeries(@NonNull String printerName) {
+        int printerSeries = -1;
+
+        if(printerName.contains("TM-T88V")){
+            printerSeries = Printer.TM_T88;
+        }else if(printerName.contains("TM-m10")){
+            printerSeries = Printer.TM_M10;
+        }else if(printerName.contains("TM-m30")){
+            printerSeries = Printer.TM_M30;
+        }else if(printerName.contains("TM-P20")){
+            printerSeries = Printer.TM_P20;
+        }else if(printerName.contains("TM-P60II")){
+            printerSeries = Printer.TM_P60II;
+        }else if(printerName.contains("TM-P80")){
+            printerSeries = Printer.TM_P80;
+        }
+        // else{
+        // Depending on the printer, add conversion processes
+        // }
+        return printerSeries;
+    }
+
+    public static String getErrorMessage(PrinterStatusInfo status) {
+        String msg = "";
+
+        if (status.getOnline() == Printer.FALSE) {
+            msg += "Printer is offline.";
+        }
+        if (status.getConnection() == Printer.FALSE) {
+            msg += "Please check the connection of the printer and the mobile terminal.\\nConnection get lost.\\n";
+        }
+        if (status.getCoverOpen() == Printer.TRUE) {
+            msg += "Please close roll paper cover.\\n";
+        }
+        if (status.getPaper() == Printer.PAPER_EMPTY) {
+            msg += "Please check roll paper.\\n";
+        }
+        if (status.getPaperFeed() == Printer.TRUE || status.getPanelSwitch() == Printer.SWITCH_ON) {
+            msg += "Please release a paper feed switch.\\n";
+        }
+        if (status.getErrorStatus() == Printer.MECHANICAL_ERR || status.getErrorStatus() == Printer.AUTOCUTTER_ERR) {
+            msg += "Please remove jammed paper and close roll paper cover.\\nRemove any jammed paper or foreign substances in the printer, and then turn the printer off and turn the printer on again.\\n";
+            msg += "Then, If the printer doesn't recover from error, please cycle the power switch.\\n";
+        }
+        if (status.getErrorStatus() == Printer.UNRECOVER_ERR) {
+            msg += "Please cycle the power switch of the printer.\\nIf same errors occurred even power cycled, the printer may out of order.";
+        }
+        if (status.getErrorStatus() == Printer.AUTORECOVER_ERR) {
+            if (status.getAutoRecoverError() == Printer.HEAD_OVERHEAT) {
+                msg += "Please wait until error LED of the printer turns off. \\n";
+                msg += "Print head of printer is hot.";
+            }
+            if (status.getAutoRecoverError() == Printer.MOTOR_OVERHEAT) {
+                msg += "Please wait until error LED of the printer turns off. \\n";
+                msg += "Motor Driver IC of printer is hot.";
+            }
+            if (status.getAutoRecoverError() == Printer.BATTERY_OVERHEAT) {
+                msg += "Please wait until error LED of the printer turns off. \\n";
+                msg += "Battery of printer is hot.";
+            }
+            if (status.getAutoRecoverError() == Printer.WRONG_PAPER) {
+                msg += "Please set correct roll paper.";
+            }
+        }
+        if (status.getBatteryLevel() == Printer.BATTERY_LEVEL_0) {
+            msg += "Please connect AC adapter or change the battery.\\nBattery of printer is almost empty.";
+        }
+        if (status.getRemovalWaiting() == Printer.REMOVAL_WAIT_PAPER) {
+            msg += "Please remove paper.";
+        }
+        if(status.getUnrecoverError() == Printer.HIGH_VOLTAGE_ERR ||
+                status.getUnrecoverError() == Printer.LOW_VOLTAGE_ERR) {
+            msg += "Please check the voltage status.";
+        }
+
+        return msg;
     }
 }

@@ -5,7 +5,7 @@ import BtnDialog from './src/components/Dialog';
 import Printers from './src/components/Printers';
 
 import { SubmitMACs } from './src/components/Services';
-import { TransferDataToSDK, StartDiscovery } from './src/components/EpsonNative';
+import EpsonNative, { TransferDataToSDK, StartDiscovery } from './src/components/EpsonNative';
 import { Section } from './src/components/Section';
 import { PrintersContexProvider } from './src/context/Printer-context';
 import { useTimer } from './src/hooks/Timer'
@@ -25,6 +25,9 @@ const App = () => {
     restartDiscovery()
     DeviceEventEmitter.addListener("printers", (printerListened) => {
       setPrinter(printerListened)
+    });
+    DeviceEventEmitter.addListener("receipts", (receiptListened) => {
+      console.info(receiptListened)
     });
   }, []);
 
@@ -62,6 +65,7 @@ const App = () => {
   }
 
   const handlePrinting = (prntStatus) => {
+    setShowDialog(false);
     if(prntStatus == '1'){
       setDialogTitle("Success!");
       setDialogMessage('We found a new ticket for you! it will be ready soon.');
@@ -122,6 +126,8 @@ const App = () => {
             onPress={restartDiscovery} 
             color={Colors.deepPurple500} 
             disabled={isDiscoverEnabled}>Restart discovery</Button>
+
+          {<EpsonNative />}
 
           {printersSection}
 
