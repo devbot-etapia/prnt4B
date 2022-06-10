@@ -1,4 +1,5 @@
 import { checkMultiple, requestMultiple, PERMISSIONS } from 'react-native-permissions';
+import { CONSTANTS } from '../context/constants'
 
 export const AppPermissions = () => {
   console.info('Running permissions check ...')
@@ -40,7 +41,7 @@ export const SubmitMACs = async (target) => {
   
   try {
     const response = await fetch(
-      'http://192.168.1.76:8000/api/cloudprnt/getbymac',
+      CONSTANTS.URL + '/getbymac',
       {
         method: 'POST',
         headers: {
@@ -59,11 +60,33 @@ export const SubmitMACs = async (target) => {
   }
 };
 
+export const SubmitInCompletedQueue = async (id_ticket_queue) => {
+  console.log(`Ticket (${id_ticket_queue}) completed request init`);
+  try {
+    const response = await fetch(
+      CONSTANTS.URL + '/incomplete',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id_ticket_queue: id_ticket_queue
+        }),
+      },
+    );
+    console.log(`Ticket (${id_ticket_queue}) incompleted `)
+  } catch (error) {
+    console.error(error);
+  } finally {
+  }
+};
+
 export const SubmitCompletedQueue = async (id_ticket_queue) => {
   console.log(`Ticket (${id_ticket_queue}) completed request init`);
   try {
     const response = await fetch(
-      'http://192.168.1.76:8000/api/cloudprnt/delete',
+      CONSTANTS.URL + '/delete',
       {
         method: 'POST',
         headers: {
@@ -79,9 +102,4 @@ export const SubmitCompletedQueue = async (id_ticket_queue) => {
     console.error(error);
   } finally {
   }
-};
-
-const retriveData = async () => {
-  const data = await submitMACs();
-  console.log(data);
 };

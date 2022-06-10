@@ -6,7 +6,8 @@ export const ERROR_MESSAGES = {
 }
 
 export const CONSTANTS = {
-    DEFAULT_TIMER_VALUE: '5'
+    DEFAULT_TIMER_VALUE: '15',
+    URL: 'http://192.168.1.76:8000/api/cloudprnt'
 }
 
 export const GetErrorMessage = (value) => ERROR_MESSAGES[value];

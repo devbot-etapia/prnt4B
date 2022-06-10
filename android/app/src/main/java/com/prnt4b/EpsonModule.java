@@ -895,7 +895,7 @@ class ReceiptUtils {
                 }
             }
             if(!addressZIP.equals("") && !addressZIP.equals("null")){
-                address += " " + addressState;
+                address += " " + addressZIP;
             }
             if(!address.equals("")){
                 mPrinterSelected.addText(address + "\n");

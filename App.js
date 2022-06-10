@@ -1,20 +1,23 @@
 import React, { useEffect, useState, useContext } from 'react';
-import { ScrollView, StatusBar, StyleSheet, Text, useColorScheme, View, Button, DeviceEventEmitter } from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, useColorScheme, View, DeviceEventEmitter } from 'react-native';
+import { TextInput, ActivityIndicator, Colors, Button } from 'react-native-paper';
+import BtnDialog from './src/components/Dialog';
+import Printers from './src/components/Printers';
 
-import { Colors } from 'react-native/Libraries/NewAppScreen';
 import { SubmitMACs } from './src/components/Services';
 import { TransferDataToSDK, StartDiscovery } from './src/components/EpsonNative';
-import Printers from './src/components/Printers';
 import { Section } from './src/components/Section';
-import { TextInput } from 'react-native-paper';
 import { PrintersContexProvider } from './src/context/Printer-context';
 import { useTimer } from './src/hooks/Timer'
-import { CONSTANTS } from './src/context/constants';
+import { CONSTANTS, GetErrorMessage } from './src/context/constants';
 
 const App = () => {
   const isDarkMode = useColorScheme() === 'dark';
   const [periodicity, setPeriodicity] = useState(CONSTANTS.DEFAULT_TIMER_VALUE);
   const [isDiscoverEnabled , setIsDiscoverEnabled] = useState(false);
+  const [dialogMessage , setDialogMessage] = useState("");
+  const [dialogTitle , setDialogTitle] = useState("");
+  const [showDialog , setShowDialog] = useState(false);
 
   const [printer , setPrinter] = useState(null);
   
@@ -30,8 +33,10 @@ const App = () => {
       return;
 
     const data = await SubmitMACs(printer.Target);
-    if(data.queue)
-      await TransferDataToSDK(JSON.stringify(data), data.id_ticket_queue, printer.Target, printer.DeviceName);
+    if(data.queue){
+      const prntingResult = await TransferDataToSDK(JSON.stringify(data), data.id_ticket_queue, printer.Target, printer.DeviceName);
+      handlePrinting(prntingResult);
+    }
   };
 
   const restartDiscovery = () => {
@@ -56,16 +61,42 @@ const App = () => {
     setTimer(newSecondsValue)
   }
 
+  const handlePrinting = (prntStatus) => {
+    if(prntStatus == '1'){
+      setDialogTitle("Success!");
+      setDialogMessage('We found a new ticket for you! it will be ready soon.');
+    }
+    else{
+      const errorMessage = GetErrorMessage(prntStatus);
+      setDialogTitle("Alert");
+      setDialogMessage(errorMessage + '\n\n' + 'We are going to mark the ticket as incomplete, and you are allowed to manually request it');
+    }
+    
+    setShowDialog(true);
+  }
+
+  const dimissDialog = () => setShowDialog(false);
+
+  const printersSection = printer ? 
+  <Printers list={printer} /> : 
+  <>
+    <ActivityIndicator style={styles.indicator} size={'large'} animating={true} color={Colors.deepPurple400} />
+    <Text style={{textAlign:'center', marginTop:8}}>We are looking for printers</Text>
+    <Text style={{textAlign:'center'}}>Please be patient</Text>
+  </>;
+
   return (
     <PrintersContexProvider>
       <View style={styles.container}>
         <StatusBar barStyle={isDarkMode ? Colors.darker : Colors.lighter} />
         <ScrollView
-          style={{ backgroundColor: isDarkMode ? '#000' : Colors.lighter, width: '100%' }} contentContainerStyle={styles.container}>
-          <Section title="Step One" centered={false}>
-            Edit <Text style={styles.highlight}>the Timer</Text> to change the
-            requests periodicity to search for new printings
+          style={{ backgroundColor: isDarkMode ? '#000' : Colors.lighter, width: '100%' }} 
+          contentContainerStyle={styles.container}>
+
+          <Section title="Welcome!" centered={false}>
+            Edit the <Text style={styles.highlight}>Timer</Text> to automatically to search for new printings.
           </Section>
+
           <TextInput
             style={styles.inputContainerStyle}
             label="Timer"
@@ -75,15 +106,32 @@ const App = () => {
             onBlur={handlePeriodicity}
             onChangeText={text => setPeriodicity(text)}
           />
-          <Section title="Printers" centered={true}>
-          </Section>
-          <Printers list={printer} />
-          <View style={styles.button}>
-            <Button title="Search printers" onPress={restartDiscovery} disabled={isDiscoverEnabled} />
-          </View>
-          {/* <View style={styles.button}>
-            <Button title="Search new printings" onPress={fetchToFindPrintings} disabled={!printer} />
-          </View> */}
+          
+          <Button 
+            style={styles.button} 
+            mode="contained" 
+            onPress={fetchToFindPrintings} 
+            color={Colors.deepPurple500} 
+            disabled={!printer}>Search now</Button>
+          
+          <Section title="Printers" centered={true} />
+
+          <Button 
+            style={styles.button} 
+            mode="contained" 
+            onPress={restartDiscovery} 
+            color={Colors.deepPurple500} 
+            disabled={isDiscoverEnabled}>Restart discovery</Button>
+
+          {printersSection}
+
+          <BtnDialog
+            visible={showDialog}
+            message={dialogMessage}
+            title={dialogTitle}
+            close={dimissDialog}
+          />
+
         </ScrollView>
       </View>
     </PrintersContexProvider>
@@ -101,13 +149,15 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 15,
-    marginHorizontal: 24,
-    paddingVertical: 5,
+    marginHorizontal: 24
   },
   inputContainerStyle: {
     marginTop: 8,
     marginHorizontal: 24
-}
+  },
+  indicator:{
+    marginTop: 25
+  }
 });
 
 export default () => {

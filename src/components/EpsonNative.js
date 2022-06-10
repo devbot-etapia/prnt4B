@@ -1,7 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Button } from 'react-native';
-import { SubmitCompletedQueue } from './Services'
-import { GetErrorMessage } from '../context/constants'
+import { SubmitCompletedQueue, SubmitInCompletedQueue } from './Services'
 
 import { NativeModules } from 'react-native';
 const EpsonModule = NativeModules.EpsonModule;
@@ -9,14 +8,15 @@ const EpsonModule = NativeModules.EpsonModule;
 export const TransferDataToSDK = async (payload, id_ticket_queue, target, priterName) => {
   console.info(`Init transfer to sdk, ticket ${id_ticket_queue}, target ${target}, priterName ${priterName}`)
   const prntResult = await EpsonModule.rnReceiveData(payload, target, priterName);
-  const errorMessage = GetErrorMessage(prntResult);
   if (prntResult == "1") {
+    console.info(`completed ticket ${id_ticket_queue}, target ${target}, priterName ${priterName}`)
     SubmitCompletedQueue(id_ticket_queue)
   }
   else{
-    console.warn(errorMessage);
-    console.warn(`ticket ${id_ticket_queue}, target ${target}, priterName ${priterName}`)
+    SubmitInCompletedQueue(id_ticket_queue)
+    console.warn(`failed ticket ${id_ticket_queue}, target ${target}, priterName ${priterName}`)
   }
+  return prntResult;
 }
 
 export const StartDiscovery = async () => {
