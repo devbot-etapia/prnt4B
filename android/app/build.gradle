@@ -263,7 +263,7 @@ dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar"])
 
     //noinspection GradleDynamicVersion
-    implementation "com.facebook.react:react-native:+"  // From node_modules
+    implementation 'com.facebook.react:react-native:0.20.1'  // From node_modules
 
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.0.0"
     implementation files('C:\\Proyectos\\4Burner\\Movil\\Epson\\Android\\ePOS_SDK_Android_v2.20.0\\ePOS2.jar')
